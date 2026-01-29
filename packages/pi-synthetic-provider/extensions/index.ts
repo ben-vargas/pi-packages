@@ -408,7 +408,7 @@ export default function (pi: ExtensionAPI) {
 						"Ctx".padStart(5) +
 						"Input".padStart(8) +
 						"Output".padStart(8) +
-						"Cache".padStart(8) +
+						"R-Cache".padStart(8) +
 						"  " +
 						"Caps";
 					console.log(hdr);
@@ -442,7 +442,7 @@ export default function (pi: ExtensionAPI) {
 
 				console.log("");
 				console.log("=".repeat(W));
-				console.log("  Prices are $/million tokens. Cache = input cache read cost.");
+				console.log("  Prices are $/million tokens. R-Cache = input cache read cost.");
 				console.log("  Use synthetic:<model-id> to select a model");
 				console.log("  Example: pi --model synthetic:hf:moonshotai/Kimi-K2.5");
 				console.log("=".repeat(W) + "\n");
