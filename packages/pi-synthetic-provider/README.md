@@ -18,6 +18,12 @@
 pi install npm:@benvargas/pi-synthetic-provider
 ```
 
+Or via git (also installs all other extensions in the [pi-packages](https://github.com/ben-vargas/pi-packages) monorepo):
+
+```bash
+pi install git:github.com/ben-vargas/pi-packages
+```
+
 Or try without installing:
 
 ```bash
