@@ -3,15 +3,20 @@
   "version": "1.0.0",
   "description": "Synthetic (synthetic.new) model provider for pi - Dynamic model fetching with reasoning, vision, and tools support",
   "keywords": [
+    "pi",
     "pi-package",
     "pi-extension",
+    "pi-coding-agent",
+    "ai",
+    "ai-provider",
+    "coding-assistant",
     "synthetic",
     "synthetic-new",
-    "ai-provider",
     "moonshot",
     "kimi",
     "glm",
-    "minimax"
+    "minimax",
+    "openai-compatible"
   ],
   "type": "module",
   "files": [

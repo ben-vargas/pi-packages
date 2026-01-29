@@ -7,7 +7,15 @@
     "packages/*"
   ],
   "keywords": [
-    "pi-package"
+    "pi",
+    "pi-package",
+    "pi-packages",
+    "pi-extensions",
+    "pi-coding-agent",
+    "extensions",
+    "ai",
+    "ai-provider",
+    "coding-assistant"
   ],
   "pi": {
     "extensions": [
