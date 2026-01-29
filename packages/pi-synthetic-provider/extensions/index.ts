@@ -298,9 +298,19 @@ async function hasSyntheticApiKey(ctx: ExtensionContext): Promise<boolean> {
 // =============================================================================
 
 export default function (pi: ExtensionAPI) {
-	// Register provider on session start (allows dynamic model fetching)
+	// Register provider synchronously with fallback models.
+	// pi.registerProvider() during loading is queued and applied during
+	// runner.initialize(). Registrations in event handlers (e.g., session_start)
+	// are queued but never flushed, so the initial registration must happen here.
+	pi.registerProvider("synthetic", {
+		baseUrl: SYNTHETIC_API_BASE_URL,
+		apiKey: "SYNTHETIC_API_KEY",
+		api: "openai-completions",
+		models: getFallbackModels(),
+	});
+
+	// After session starts, replace fallback models with live data from the API
 	pi.on("session_start", async (_event, ctx) => {
-		// Check for API key from any source (auth.json takes priority over env var)
 		const apiKey = await getSyntheticApiKey(ctx);
 		const hasKey = await hasSyntheticApiKey(ctx);
 
@@ -309,29 +319,23 @@ export default function (pi: ExtensionAPI) {
 			console.log("[Synthetic Provider] Options:");
 			console.log("  1. Set SYNTHETIC_API_KEY environment variable");
 			console.log(`  2. Add to ${AUTH_JSON_PATH} (see README for details)`);
-			console.log("[Synthetic Provider] Provider will be registered with public model list.");
 		}
 
-		// Fetch models dynamically
+		// Fetch live models and re-register to replace fallbacks
 		const models = await fetchSyntheticModels(apiKey);
 
-		if (models.length === 0) {
-			console.error("[Synthetic Provider] No models available. Provider registration skipped.");
-			return;
+		if (models.length > 0) {
+			pi.registerProvider("synthetic", {
+				baseUrl: SYNTHETIC_API_BASE_URL,
+				apiKey: "SYNTHETIC_API_KEY",
+				api: "openai-completions",
+				models,
+			});
+			console.log(`[Synthetic Provider] Updated with ${models.length} live models`);
+		} else {
+			console.log("[Synthetic Provider] API unavailable, using fallback models");
 		}
 
-		// Register the provider
-		// Note: apiKey here is the ENV VAR NAME, but pi will also check auth.json
-		// because modelRegistry.getApiKey() checks auth.json first
-		pi.registerProvider("synthetic", {
-			baseUrl: SYNTHETIC_API_BASE_URL,
-			apiKey: "SYNTHETIC_API_KEY", // Environment variable name (fallback)
-			api: "openai-completions", // Uses built-in OpenAI Completions streaming
-			models,
-		});
-
-		console.log(`[Synthetic Provider] Registered with ${models.length} models`);
-		console.log("[Synthetic Provider] Use 'synthetic:<model-id>' to select a model (e.g., synthetic:hf:moonshotai/Kimi-K2.5)");
 		if (!hasKey) {
 			console.log("[Synthetic Provider] Set SYNTHETIC_API_KEY or add key to auth.json (see README)");
 		}
