@@ -46,7 +46,7 @@
  * available models list is always current.
  *
  * Developer Note: To update fallback pricing, run:
- *   curl -s https://api.synthetic.new/openai/v1/models | jq '.data[] | select(.provider == "synthetic" and .always_on == true and (.supported_features | contains(["tools"]))) | {id, name, context_length, max_output_length, pricing}'
+ *   curl -s https://api.synthetic.new/openai/v1/models | jq '.data[] | select(.always_on == true) | {id, name, provider, context_length, max_output_length, pricing}'
  */
 
 import type { ExtensionAPI, ExtensionContext, ProviderModelConfig } from "@mariozechner/pi-coding-agent";
@@ -141,9 +141,11 @@ async function fetchSyntheticModels(apiKey?: string): Promise<ProviderModelConfi
 		const models: ProviderModelConfig[] = [];
 
 		for (const model of data.data) {
-			// Only include always-on models that support tools
+			// Only include always-on models.
+			// Treat null/missing supported_features as "all features supported"
+			// since the API only populates this field for Synthetic-hosted models.
 			if (!model.always_on) continue;
-			if (!model.supported_features?.includes("tools")) continue;
+			if (model.supported_features && !model.supported_features.includes("tools")) continue;
 
 			const modelId = model.id; // e.g., "hf:moonshotai/Kimi-K2.5"
 			const displayName = model.name || model.hugging_face_id || modelId;
@@ -364,10 +366,8 @@ export default function (pi: ExtensionAPI) {
 
 				const data = (await response.json()) as SyntheticModelsResponse;
 
-				// Filter for always-on models with tool support
-				const models = data.data.filter(
-					(m) => m.always_on && m.supported_features?.includes("tools"),
-				);
+				// Filter for always-on models
+				const models = data.data.filter((m) => m.always_on);
 
 				// Sort by provider then by name
 				models.sort((a, b) => {
