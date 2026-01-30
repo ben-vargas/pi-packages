@@ -268,9 +268,7 @@ function normalizeTools(value: unknown): string[] | undefined {
 		return tools.length > 0 ? tools : undefined;
 	}
 	if (Array.isArray(value)) {
-		const tools = value
-			.map((tool) => (typeof tool === "string" ? tool.trim() : ""))
-			.filter((tool) => tool.length > 0);
+		const tools = value.map((tool) => (typeof tool === "string" ? tool.trim() : "")).filter((tool) => tool.length > 0);
 		return tools.length > 0 ? tools : undefined;
 	}
 	return undefined;
@@ -676,6 +674,16 @@ const codeContextParams = Type.Object(
 // =============================================================================
 // Extension Entry Point
 // =============================================================================
+
+export {
+	parseTimeoutMs,
+	normalizeNumber,
+	normalizeTools,
+	parseToolsFromUrl,
+	splitParams,
+	resolveEffectiveLimits,
+	resolveEndpoint,
+};
 
 export default function exaMcp(pi: ExtensionAPI) {
 	// Register CLI flags

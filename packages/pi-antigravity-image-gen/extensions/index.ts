@@ -467,7 +467,6 @@ async function generateImage(
 				continue;
 			}
 			errors.push(`${endpoint}: ${err instanceof Error ? err.message : String(err)}`);
-			continue;
 		}
 	}
 
@@ -534,6 +533,8 @@ async function getImageQuota(accessToken: string, projectId: string): Promise<Qu
 // ---------------------------------------------------------------------------
 // Extension entry point
 // ---------------------------------------------------------------------------
+
+export { buildRequest, parseOAuthCredentials, resolveSaveConfig };
 
 export default function antigravityImageGen(pi: ExtensionAPI) {
 	// Tool: generate_image
@@ -602,7 +603,10 @@ export default function antigravityImageGen(pi: ExtensionAPI) {
 
 			if (!quota) {
 				return {
-					content: [{ type: "text", text: "Could not fetch quota information. The API may be temporarily unavailable." }],
+					content: [
+						{ type: "text", text: "Could not fetch quota information. The API may be temporarily unavailable." },
+					],
+					details: { provider: PROVIDER, model: IMAGE_MODEL, quota: null },
 				};
 			}
 
@@ -624,6 +628,7 @@ export default function antigravityImageGen(pi: ExtensionAPI) {
 
 			return {
 				content: [{ type: "text", text: lines.join("\n") }],
+				details: { provider: PROVIDER, model: IMAGE_MODEL, quota },
 			};
 		},
 	});

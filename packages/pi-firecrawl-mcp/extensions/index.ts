@@ -256,11 +256,9 @@ function awaitWithAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T
 			reject(createAbortError());
 		};
 		signal.addEventListener("abort", handleAbort, { once: true });
-		promise
-			.then(resolve, reject)
-			.finally(() => {
-				signal.removeEventListener("abort", handleAbort);
-			});
+		promise.then(resolve, reject).finally(() => {
+			signal.removeEventListener("abort", handleAbort);
+		});
 	});
 }
 
@@ -281,10 +279,7 @@ function splitParams(params: Record<string, unknown>): {
 	};
 }
 
-function normalizeCrawlArgs(
-	toolName: string,
-	args: Record<string, unknown>,
-): Record<string, unknown> {
+function normalizeCrawlArgs(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
 	if (toolName !== "firecrawl_crawl") {
 		return args;
 	}
@@ -340,9 +335,7 @@ function normalizeTools(value: unknown): string[] | undefined {
 		return tools.length > 0 ? tools : undefined;
 	}
 	if (Array.isArray(value)) {
-		const tools = value
-			.map((tool) => (typeof tool === "string" ? tool.trim() : ""))
-			.filter((tool) => tool.length > 0);
+		const tools = value.map((tool) => (typeof tool === "string" ? tool.trim() : "")).filter((tool) => tool.length > 0);
 		return tools.length > 0 ? tools : undefined;
 	}
 	return undefined;
@@ -400,7 +393,6 @@ function loadConfig(configPath: string | undefined): FirecrawlMcpConfig | null {
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			console.warn(`Invalid Firecrawl MCP config at ${candidate}: ${message}`);
-			continue;
 		}
 	}
 
@@ -771,9 +763,7 @@ const mapParams = Type.Object(
 	{
 		url: Type.String({ description: "Base URL to map." }),
 		search: Type.Optional(Type.String()),
-		sitemap: Type.Optional(
-			StringEnum(["include", "skip", "only"] as const, { description: "Sitemap handling mode." }),
-		),
+		sitemap: Type.Optional(StringEnum(["include", "skip", "only"] as const, { description: "Sitemap handling mode." })),
 		includeSubdomains: Type.Optional(Type.Boolean()),
 		limit: Type.Optional(Type.Integer()),
 		ignoreQueryParameters: Type.Optional(Type.Boolean()),
@@ -832,6 +822,17 @@ const extractParams = Type.Object(
 // =============================================================================
 // Extension Entry Point
 // =============================================================================
+
+export {
+	parseTimeoutMs,
+	normalizeNumber,
+	normalizeTools,
+	normalizeHeaders,
+	splitParams,
+	normalizeCrawlArgs,
+	resolveEffectiveLimits,
+	resolveEndpoint,
+};
 
 export default function piFirecrawlMcp(pi: ExtensionAPI) {
 	// Register CLI flags

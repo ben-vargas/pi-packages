@@ -127,7 +127,7 @@ async function fetchSyntheticModels(apiKey?: string): Promise<ProviderModelConfi
 
 		// API key is optional for model listing (public endpoint)
 		if (apiKey) {
-			headers["Authorization"] = `Bearer ${apiKey}`;
+			headers.Authorization = `Bearer ${apiKey}`;
 		}
 
 		const response = await fetch(SYNTHETIC_MODELS_ENDPOINT, { headers });
@@ -194,7 +194,6 @@ async function fetchSyntheticModels(apiKey?: string): Promise<ProviderModelConfi
  * Kimi-K2.5: "$1.20" per million (already in per-M format)
  */
 function getFallbackModels(): ProviderModelConfig[] {
-
 	return [
 		{
 			id: "hf:moonshotai/Kimi-K2.5",
@@ -291,6 +290,8 @@ async function hasSyntheticApiKey(ctx: ExtensionContext): Promise<boolean> {
 // Extension Entry Point
 // =============================================================================
 
+export { getFallbackModels, parsePrice };
+
 export default function (pi: ExtensionAPI) {
 	// Register provider synchronously with fallback models.
 	// pi.registerProvider() during loading is queued and applied during
@@ -358,7 +359,7 @@ export default function (pi: ExtensionAPI) {
 					Accept: "application/json",
 				};
 				if (apiKey) {
-					headers["Authorization"] = `Bearer ${apiKey}`;
+					headers.Authorization = `Bearer ${apiKey}`;
 				}
 
 				const response = await fetch(SYNTHETIC_MODELS_ENDPOINT, { headers });
@@ -383,19 +384,21 @@ export default function (pi: ExtensionAPI) {
 				ctx.ui.notify("Displaying model catalog in logs", "info");
 
 				const W = 90;
-				console.log("\n" + "=".repeat(W));
+				console.log(`\n${"=".repeat(W)}`);
 				console.log("  SYNTHETIC MODEL CATALOG");
-				console.log("  " + models.length + " models available");
+				console.log(`  ${models.length} models available`);
 				console.log("=".repeat(W));
 
 				// Group by provider
 				const byProvider = new Map<string, SyntheticModel[]>();
 				for (const m of models) {
 					const provider = m.provider || "unknown";
-					if (!byProvider.has(provider)) {
-						byProvider.set(provider, []);
+					let bucket = byProvider.get(provider);
+					if (!bucket) {
+						bucket = [];
+						byProvider.set(provider, bucket);
 					}
-					byProvider.get(provider)!.push(m);
+					bucket.push(m);
 				}
 
 				// Display by provider
@@ -405,24 +408,16 @@ export default function (pi: ExtensionAPI) {
 					console.log("-".repeat(W));
 
 					// Table header
-					const hdr =
-						"  " +
-						"Model".padEnd(44) +
-						"Ctx".padStart(5) +
-						"Input".padStart(8) +
-						"Output".padStart(8) +
-						"R-Cache".padStart(8) +
-						"  " +
-						"Caps";
+					const hdr = `  ${"Model".padEnd(44)}${"Ctx".padStart(5)}${"Input".padStart(8)}${"Output".padStart(8)}${"R-Cache".padStart(8)}  Caps`;
 					console.log(hdr);
 					console.log("-".repeat(W));
 
 					for (const m of providerModels) {
-						const id = m.id.length > 42 ? m.id.substring(0, 39) + "..." : m.id;
-						const context = (m.context_length / 1024).toFixed(0) + "K";
-						const inputCost = "$" + parsePrice(m.pricing?.prompt).toFixed(2);
-						const outputCost = "$" + parsePrice(m.pricing?.completion).toFixed(2);
-						const cacheCost = "$" + parsePrice(m.pricing?.input_cache_reads).toFixed(2);
+						const id = m.id.length > 42 ? `${m.id.substring(0, 39)}...` : m.id;
+						const context = `${(m.context_length / 1024).toFixed(0)}K`;
+						const inputCost = `$${parsePrice(m.pricing?.prompt).toFixed(2)}`;
+						const outputCost = `$${parsePrice(m.pricing?.completion).toFixed(2)}`;
+						const cacheCost = `$${parsePrice(m.pricing?.input_cache_reads).toFixed(2)}`;
 
 						const caps: string[] = [];
 						if (m.input_modalities?.includes("image")) caps.push("vision");
@@ -431,14 +426,7 @@ export default function (pi: ExtensionAPI) {
 						const capsStr = caps.length > 0 ? caps.join(", ") : "";
 
 						console.log(
-							"  " +
-								id.padEnd(44) +
-								context.padStart(5) +
-								inputCost.padStart(8) +
-								outputCost.padStart(8) +
-								cacheCost.padStart(8) +
-								"  " +
-								capsStr,
+							`  ${id.padEnd(44)}${context.padStart(5)}${inputCost.padStart(8)}${outputCost.padStart(8)}${cacheCost.padStart(8)}  ${capsStr}`,
 						);
 					}
 				}
@@ -448,7 +436,7 @@ export default function (pi: ExtensionAPI) {
 				console.log("  Prices are $/million tokens. R-Cache = input cache read cost.");
 				console.log("  Use synthetic:<model-id> to select a model");
 				console.log("  Example: pi --model synthetic:hf:moonshotai/Kimi-K2.5");
-				console.log("=".repeat(W) + "\n");
+				console.log(`${"=".repeat(W)}\n`);
 			} catch (error) {
 				const errorMessage = error instanceof Error ? error.message : String(error);
 				ctx.ui.notify(`Failed to fetch models: ${errorMessage}`, "error");
