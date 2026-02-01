@@ -1,6 +1,6 @@
 # pi-packages
 
-Community packages for [pi](https://github.com/badlogic/pi-mono), the AI coding agent.
+These are packages built for my personal use and shared with the community of [pi](https://github.com/badlogic/pi-mono) in case it helps others.
 
 Pi packages can include extensions, skills, prompt templates, and themes. See the [pi packages docs](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/packages.md) for details.
 
