@@ -77,6 +77,12 @@ The boundary directory is included in the search.
 - Paths are returned closest-first, so nearer resources win name collisions.
 - Absolute or `~`-prefixed search paths are treated as fixed locations and appended after ancestor discovery.
 
+## Uninstall
+
+```bash
+pi remove npm:@benvargas/pi-ancestor-discovery
+```
+
 ## License
 
 MIT
