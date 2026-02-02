@@ -1,6 +1,6 @@
 {
   "name": "@benvargas/pi-synthetic-provider",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Synthetic (synthetic.new) model provider for pi - Dynamic model fetching with reasoning, vision, and tools support",
   "keywords": [
     "pi",

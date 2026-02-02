@@ -1,6 +1,6 @@
 {
   "name": "@benvargas/pi-firecrawl-mcp",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Firecrawl MCP tools for pi - Web scraping, crawling, and data extraction via Firecrawl's Model Context Protocol",
   "keywords": [
     "pi",

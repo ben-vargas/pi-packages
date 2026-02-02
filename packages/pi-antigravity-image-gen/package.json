@@ -1,6 +1,6 @@
 {
   "name": "@benvargas/pi-antigravity-image-gen",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Google Antigravity image generation tool for pi - Generate images via Gemini and Imagen models with inline terminal rendering",
   "keywords": [
     "pi",
