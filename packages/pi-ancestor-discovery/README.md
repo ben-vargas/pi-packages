@@ -14,10 +14,10 @@ pi install npm:@benvargas/pi-ancestor-discovery
 
 - Enabled: skills
 - Disabled: prompts, themes
-- Search paths: `.pi/skills`
+- Search paths: `.pi/skills`, `.agents/skills`
 - Boundary: home directory (`~`)
 
-This means it will look for `.pi/skills` at each ancestor directory from `cwd` up to your home directory.
+This means it will look for `.pi/skills` and `.agents/skills` at each ancestor directory from `cwd` up to your home directory.
 
 ## Configuration
 
@@ -37,7 +37,7 @@ If neither exists, the extension writes the default config to the global path on
   "resources": {
     "skills": {
       "enabled": true,
-      "searchPaths": [".pi/skills"]
+      "searchPaths": [".pi/skills", ".agents/skills"]
     },
     "prompts": {
       "enabled": true,
@@ -58,7 +58,7 @@ If neither exists, the extension writes the default config to the global path on
   "resources": {
     "skills": {
       "enabled": true,
-      "searchPaths": [".pi/skills", ".claude/skills"]
+      "searchPaths": [".pi/skills", ".agents/skills", ".claude/skills"]
     }
   }
 }
