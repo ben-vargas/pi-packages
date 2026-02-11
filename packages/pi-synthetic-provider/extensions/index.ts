@@ -86,12 +86,27 @@ interface SyntheticModelsResponse {
 	data: SyntheticModel[];
 }
 
+interface QuotaBucket {
+	limit: number;
+	requests: number;
+	renewsAt: string;
+}
+
+interface SyntheticQuotaResponse {
+	subscription?: QuotaBucket;
+	search?: {
+		hourly?: QuotaBucket;
+	};
+	toolCallDiscounts?: QuotaBucket;
+}
+
 // =============================================================================
 // Configuration
 // =============================================================================
 
 const SYNTHETIC_API_BASE_URL = "https://api.synthetic.new/openai/v1";
 const SYNTHETIC_MODELS_ENDPOINT = `${SYNTHETIC_API_BASE_URL}/models`;
+const SYNTHETIC_QUOTAS_ENDPOINT = "https://api.synthetic.new/v2/quotas";
 
 /** Shared compat flags for all Synthetic models (OpenAI-compatible API). */
 const SYNTHETIC_COMPAT = {
@@ -207,6 +222,73 @@ function formatCatalogRow(model: SyntheticModel): string {
 	const capsRaw = getModelCapabilities(model).join("/") || "-";
 	const caps = truncateWithEllipsis(capsRaw, CATALOG_CAPS_COL).padEnd(CATALOG_CAPS_COL);
 	return `${provider} ${modelId} ${ctx} ${input} ${output} ${cache} ${caps}`;
+}
+
+// =============================================================================
+// Quota Helpers
+// =============================================================================
+
+/**
+ * Fetch quota information from the Synthetic API.
+ * Requires an API key (returns null if not provided).
+ */
+async function fetchSyntheticQuota(apiKey: string): Promise<SyntheticQuotaResponse> {
+	const response = await fetch(SYNTHETIC_QUOTAS_ENDPOINT, {
+		headers: {
+			Authorization: `Bearer ${apiKey}`,
+			Accept: "application/json",
+		},
+	});
+
+	if (!response.ok) {
+		const errorText = await response.text();
+		throw new Error(`Quota API error: ${response.status} ${response.statusText} - ${errorText}`);
+	}
+
+	return (await response.json()) as SyntheticQuotaResponse;
+}
+
+/**
+ * Format a time remaining string from a renewal date.
+ * Returns e.g. "2h 14m", "45m", "< 1m"
+ */
+function formatTimeRemaining(renewsAt: string): string {
+	const now = Date.now();
+	const renewalTime = new Date(renewsAt).getTime();
+	const diffMs = renewalTime - now;
+
+	if (diffMs <= 0) return "now";
+
+	const totalMinutes = Math.floor(diffMs / 60_000);
+	const hours = Math.floor(totalMinutes / 60);
+	const minutes = totalMinutes % 60;
+
+	if (hours > 0) return `${hours}h ${minutes}m`;
+	if (minutes > 0) return `${minutes}m`;
+	return "< 1m";
+}
+
+/**
+ * Build a text-based progress bar.
+ * @param used - number of requests used
+ * @param limit - maximum requests allowed
+ * @param barWidth - character width of the bar (excluding brackets)
+ */
+function buildProgressBar(used: number, limit: number, barWidth: number): { bar: string; percent: number } {
+	const percent = limit > 0 ? Math.min((used / limit) * 100, 100) : 0;
+	const filled = Math.round((percent / 100) * barWidth);
+	const empty = barWidth - filled;
+	const bar = `${"█".repeat(filled)}${"░".repeat(empty)}`;
+	return { bar, percent };
+}
+
+/**
+ * Determine a color name based on usage percentage.
+ */
+function getUsageColor(percent: number): "success" | "warning" | "error" {
+	if (percent < 60) return "success";
+	if (percent < 85) return "warning";
+	return "error";
 }
 
 /**
@@ -399,7 +481,7 @@ async function hasSyntheticApiKey(ctx: ExtensionContext): Promise<boolean> {
 // Extension Entry Point
 // =============================================================================
 
-export { getFallbackModels, parsePrice };
+export { buildProgressBar, fetchSyntheticQuota, formatTimeRemaining, getFallbackModels, getUsageColor, parsePrice };
 
 export default function (pi: ExtensionAPI) {
 	// Register provider synchronously with fallback models.
@@ -678,6 +760,182 @@ export default function (pi: ExtensionAPI) {
 				const errorMessage = error instanceof Error ? error.message : String(error);
 				ctx.ui.notify(`Failed to fetch models: ${errorMessage}`, "error");
 				console.error("[Synthetic Provider] Model listing failed:", error);
+			}
+		},
+	});
+
+	// Register /synthetic-quota command to display current API usage quotas
+	pi.registerCommand("synthetic-quota", {
+		description: "Display your Synthetic API usage quotas and limits",
+		handler: async (_args, ctx) => {
+			if (!ctx.hasUI) {
+				console.log("[Synthetic Provider] /synthetic-quota requires interactive mode");
+				return;
+			}
+			if (!ctx.isIdle()) {
+				ctx.ui.notify("Wait for the current response to finish", "warning");
+				return;
+			}
+
+			const apiKey = await getSyntheticApiKey(ctx);
+			if (!apiKey) {
+				ctx.ui.notify("Synthetic API key not configured. Set SYNTHETIC_API_KEY or add to auth.json.", "error");
+				return;
+			}
+
+			ctx.ui.notify("Fetching quota from Synthetic API...", "info");
+
+			try {
+				const quota = await fetchSyntheticQuota(apiKey);
+
+				const BAR_WIDTH = 30;
+				let overlayRows = 44;
+				let overlayCols = 140;
+
+				await ctx.ui.custom<void>(
+					(tui, theme, _keybindings, done) => {
+						overlayRows = tui.terminal.rows;
+						overlayCols = tui.terminal.columns;
+
+						// Count how many sections we'll render to estimate needed height
+						const bucketCount = [quota.subscription, quota.toolCallDiscounts, quota.search?.hourly].filter(
+							Boolean,
+						).length;
+						// Normal layout: ~7 lines/bucket + 3 separator lines between + 6 chrome
+						// Compact layout: ~3 lines/bucket + 1 separator line between + 4 chrome
+						const normalHeight = bucketCount * 7 + (bucketCount - 1) * 3 + 6;
+						const compact = overlayRows < 45 || normalHeight > overlayRows * 0.75;
+						const barWidth = compact ? 20 : BAR_WIDTH;
+
+						const renderBucket = (label: string, bucket: QuotaBucket | undefined, icon: string): string[] => {
+							if (!bucket) return [];
+
+							const { bar, percent } = buildProgressBar(bucket.requests, bucket.limit, barWidth);
+							const color = getUsageColor(percent);
+							const remaining = Math.max(0, bucket.limit - bucket.requests);
+							const renewalStr = formatTimeRemaining(bucket.renewsAt);
+
+							if (compact) {
+								return [
+									`${icon}  ${theme.fg("accent", theme.bold(label))}`,
+									`   ${theme.fg(color, bar)}  ${theme.fg(color, `${percent.toFixed(1)}%`)} used`,
+									`   ${theme.bold(String(bucket.requests))} / ${bucket.limit} req ${theme.fg("muted", "·")} ${theme.fg(remaining > 0 ? "success" : "error", remaining.toFixed(1))} left ${theme.fg("muted", "·")} resets ${theme.fg("accent", renewalStr)}`,
+								];
+							}
+
+							return [
+								`${icon}  ${theme.fg("accent", theme.bold(label))}`,
+								"",
+								`   ${theme.fg(color, bar)}  ${theme.fg(color, `${percent.toFixed(1)}%`)} used`,
+								"",
+								`   ${theme.fg("muted", "Used:")}     ${theme.bold(String(bucket.requests))} / ${bucket.limit} requests`,
+								`   ${theme.fg("muted", "Remaining:")} ${theme.fg(remaining > 0 ? "success" : "error", remaining.toFixed(1))} requests`,
+								`   ${theme.fg("muted", "Resets in:")} ${theme.fg("accent", renewalStr)}`,
+							];
+						};
+
+						const sections: string[][] = [];
+						sections.push(renderBucket("Subscription", quota.subscription, "⚡"));
+						if (quota.toolCallDiscounts) {
+							sections.push(renderBucket("Tool Call Discounts", quota.toolCallDiscounts, "🔧"));
+						}
+						if (quota.search?.hourly) {
+							sections.push(renderBucket("Search (hourly)", quota.search.hourly, "🔍"));
+						}
+
+						const container = new Container();
+						container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
+						container.addChild(new Text(theme.fg("accent", theme.bold("  Synthetic API Quota")), 1, 0));
+
+						if (!compact) {
+							container.addChild(
+								new Text(theme.fg("muted", "  Usage and limits for your Synthetic subscription"), 1, 0),
+							);
+						}
+
+						container.addChild(new DynamicBorder((s: string) => theme.fg("muted", s)));
+
+						if (!compact) {
+							container.addChild(new Spacer(1));
+						}
+
+						for (let i = 0; i < sections.length; i++) {
+							const section = sections[i];
+							if (section.length > 0) {
+								container.addChild(new Text(section.join("\n"), 1, 0));
+								if (i < sections.length - 1) {
+									if (!compact) {
+										container.addChild(new Spacer(1));
+									}
+									container.addChild(new DynamicBorder((s: string) => theme.fg("muted", s)));
+								}
+							}
+						}
+
+						if (!compact) {
+							container.addChild(new Spacer(1));
+						}
+						container.addChild(new DynamicBorder((s: string) => theme.fg("muted", s)));
+						container.addChild(new Text(theme.fg("dim", "  Esc / Enter to close"), 1, 0));
+						container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
+
+						const panel = new Box(0, 0, (s: string) => theme.bg("customMessageBg", s));
+						panel.addChild(container);
+
+						return {
+							render: (width) => panel.render(width),
+							invalidate: () => panel.invalidate(),
+							handleInput: (data) => {
+								if (data === "\x1b" || data === "\r" || data === "\n") {
+									done(undefined);
+								}
+							},
+						};
+					},
+					{
+						overlay: true,
+						overlayOptions: () => {
+							const width = overlayCols < 100 ? "98%" : "70%";
+
+							if (overlayRows < 30) {
+								return {
+									width: "100%",
+									maxWidth: 80,
+									minWidth: 50,
+									maxHeight: "94%",
+									anchor: "center" as const,
+									margin: 0,
+								};
+							}
+
+							if (overlayRows < 40) {
+								return {
+									width,
+									maxWidth: 80,
+									minWidth: 50,
+									maxHeight: "88%",
+									anchor: "top-center" as const,
+									offsetY: 2,
+									margin: 1,
+								};
+							}
+
+							return {
+								width,
+								maxWidth: 80,
+								minWidth: 50,
+								maxHeight: "80%",
+								anchor: "top-center" as const,
+								offsetY: 4,
+								margin: 1,
+							};
+						},
+					},
+				);
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error);
+				ctx.ui.notify(`Failed to fetch quota: ${errorMessage}`, "error");
+				console.error("[Synthetic Provider] Quota fetch failed:", error);
 			}
 		},
 	});
