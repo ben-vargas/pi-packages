@@ -97,6 +97,7 @@ interface SyntheticQuotaResponse {
 	search?: {
 		hourly?: QuotaBucket;
 	};
+	freeToolCalls?: QuotaBucket;
 	toolCallDiscounts?: QuotaBucket;
 }
 
@@ -797,10 +798,11 @@ export default function (pi: ExtensionAPI) {
 						overlayRows = tui.terminal.rows;
 						overlayCols = tui.terminal.columns;
 
+						// API has moved tool-call quota from `toolCallDiscounts` to `freeToolCalls`;
+						// keep both for backwards compatibility with older payloads.
+						const toolCallBucket = quota.toolCallDiscounts ?? quota.freeToolCalls;
 						// Count how many sections we'll render to estimate needed height
-						const bucketCount = [quota.subscription, quota.toolCallDiscounts, quota.search?.hourly].filter(
-							Boolean,
-						).length;
+						const bucketCount = [quota.subscription, toolCallBucket, quota.search?.hourly].filter(Boolean).length;
 						// Normal layout: ~7 lines/bucket + 3 separator lines between + 6 chrome
 						// Compact layout: ~3 lines/bucket + 1 separator line between + 4 chrome
 						const normalHeight = bucketCount * 7 + (bucketCount - 1) * 3 + 6;
@@ -836,8 +838,9 @@ export default function (pi: ExtensionAPI) {
 
 						const sections: string[][] = [];
 						sections.push(renderBucket("Subscription", quota.subscription, "⚡"));
-						if (quota.toolCallDiscounts) {
-							sections.push(renderBucket("Tool Call Discounts", quota.toolCallDiscounts, "🔧"));
+						if (toolCallBucket) {
+							const toolCallLabel = quota.toolCallDiscounts ? "Tool Call Discounts" : "Free Tool Calls";
+							sections.push(renderBucket(toolCallLabel, toolCallBucket, "🔧"));
 						}
 						if (quota.search?.hourly) {
 							sections.push(renderBucket("Search (hourly)", quota.search.hourly, "🔍"));
