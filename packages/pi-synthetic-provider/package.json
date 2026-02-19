@@ -25,7 +25,8 @@
   ],
   "pi": {
     "extensions": [
-      "./extensions/index.ts"
+      "./extensions/index.ts",
+      "./extensions/autofix.ts"
     ]
   },
   "peerDependencies": {
