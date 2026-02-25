@@ -18,6 +18,7 @@ describe("pi-synthetic-provider helpers", () => {
 		const models = getFallbackModels();
 		expect(models.length).toBeGreaterThan(0);
 		expect(models.some((model) => model.id.includes("Kimi-K2.5"))).toBe(true);
+		expect(models.some((model) => model.id === "hf:MiniMaxAI/MiniMax-M2.5")).toBe(true);
 		for (const model of models.slice(0, 5)) {
 			expect(model.id).toEqual(expect.any(String));
 			expect(model.name).toEqual(expect.any(String));

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.8] - 2026-02-25
+
+### Added
+- Added `hf:MiniMaxAI/MiniMax-M2.5` to fallback models for early provider registration.
+
+### Fixed
+- Mitigated startup scoped-model warnings for `synthetic/hf:MiniMaxAI/MiniMax-M2.5` when `enabledModels` are resolved before `session_start` live model refresh.
+- Updated fallback metadata/docs/tests for the new MiniMax M2.5 fallback entry.
+
 ## [1.1.7] - 2026-02-19
 
 ### Changed

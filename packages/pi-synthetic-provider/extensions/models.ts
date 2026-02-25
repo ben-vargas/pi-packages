@@ -78,11 +78,12 @@ export async function fetchSyntheticModels(apiKey?: string): Promise<ProviderMod
 /**
  * Fallback models if API fetch fails.
  * Data sourced from: curl https://api.synthetic.new/openai/v1/models
- * Last updated: 2026-02-10
+ * Last updated: 2026-02-25
  *
  * Pricing format: $/million tokens
  * Synthetic-hosted models:
  * - Kimi-K2.5 & NVFP4: $0.55 input, $2.19 output, 262K context
+ * - MiniMax-M2.5: $0.60 input, $3.00 output, 191K context
  * - GLM-4.7: $0.55 input, $2.19 output, 202K context
  */
 export function getFallbackModels(): ProviderModelConfig[] {
@@ -129,6 +130,21 @@ export function getFallbackModels(): ProviderModelConfig[] {
 				cacheWrite: 0,
 			},
 			contextWindow: 196608,
+			maxTokens: 65536,
+			compat: SYNTHETIC_COMPAT,
+		},
+		{
+			id: "hf:MiniMaxAI/MiniMax-M2.5",
+			name: "MiniMaxAI/MiniMax-M2.5",
+			reasoning: true,
+			input: ["text", "image"],
+			cost: {
+				input: 0.6,
+				output: 3,
+				cacheRead: 0.6,
+				cacheWrite: 0,
+			},
+			contextWindow: 191488,
 			maxTokens: 65536,
 			compat: SYNTHETIC_COMPAT,
 		},
