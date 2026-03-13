@@ -5,7 +5,6 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 
 const FAST_COMMAND = "fast";
 const FAST_FLAG = "fast";
-const FAST_STATE_ENTRY = "pi-openai-fast.state";
 const FAST_CONFIG_BASENAME = "pi-openai-fast.json";
 const FAST_COMMAND_ARGS = ["on", "off", "status"] as const;
 const FAST_SERVICE_TIER = "priority";
@@ -119,24 +118,6 @@ function parseSupportedModels(value: unknown): FastSupportedModel[] | undefined 
 		models.push(parsed);
 	}
 	return models;
-}
-
-function parseFastModeState(value: unknown): FastModeState | undefined {
-	if (!isRecord(value) || typeof value.active !== "boolean") {
-		return undefined;
-	}
-	return { active: value.active };
-}
-
-function getSavedFastModeState(ctx: ExtensionContext): FastModeState | undefined {
-	const entries = ctx.sessionManager.getBranch();
-	for (let i = entries.length - 1; i >= 0; i--) {
-		const entry = entries[i];
-		if (entry.type === "custom" && entry.customType === FAST_STATE_ENTRY) {
-			return parseFastModeState(entry.data);
-		}
-	}
-	return undefined;
 }
 
 function readConfigFile(filePath: string): FastConfigFile | null {
@@ -262,12 +243,7 @@ export default function piOpenAIFast(pi: ExtensionAPI): void {
 		return cachedConfig ?? refreshConfig(ctx);
 	}
 
-	function appendBranchState(): void {
-		pi.appendEntry(FAST_STATE_ENTRY, state);
-	}
-
 	function persistState(config: ResolvedFastConfig): void {
-		appendBranchState();
 		cachedConfig = { ...config, active: state.active };
 		if (!config.persistState) {
 			return;
@@ -367,28 +343,18 @@ export default function piOpenAIFast(pi: ExtensionAPI): void {
 
 	pi.on("session_start", async (_event, ctx) => {
 		const config = refreshConfig(ctx);
-		const savedState = getSavedFastModeState(ctx);
-		const persistedState =
-			config.persistState && typeof config.active === "boolean" ? { active: config.active } : undefined;
-		const restoredFromConfig = !savedState && persistedState !== undefined;
-		state = savedState ?? persistedState ?? { active: false };
+		state = config.persistState && typeof config.active === "boolean" ? { active: config.active } : { active: false };
 
 		if (pi.getFlag(FAST_FLAG) === true) {
 			if (!state.active) {
 				state = { active: true };
 				persistState(config);
-			} else if (restoredFromConfig) {
-				appendBranchState();
 			}
 			ctx.ui.notify(describeCurrentState(ctx, state.active, config.supportedModels), "info");
 			return;
 		}
 
-		if (restoredFromConfig) {
-			appendBranchState();
-		}
-
-		if (!savedState && state.active) {
+		if (state.active) {
 			ctx.ui.notify(describeCurrentState(ctx, state.active, config.supportedModels), "info");
 		}
 	});
@@ -397,14 +363,12 @@ export default function piOpenAIFast(pi: ExtensionAPI): void {
 export const _test = {
 	FAST_COMMAND,
 	FAST_FLAG,
-	FAST_STATE_ENTRY,
 	FAST_CONFIG_BASENAME,
 	FAST_COMMAND_ARGS,
 	FAST_SERVICE_TIER,
 	DEFAULT_SUPPORTED_MODEL_KEYS,
 	DEFAULT_CONFIG_FILE,
 	getConfigPaths,
-	parseFastModeState,
 	parseSupportedModelKey,
 	parseSupportedModels,
 	readConfigFile,

@@ -27,14 +27,6 @@ function createTempConfigPaths(): { cwd: string; homeDir: string; cleanup: () =>
 }
 
 describe("pi-openai-fast helpers", () => {
-	it("parses persisted state only when it has a boolean active flag", () => {
-		expect(_test.parseFastModeState({ active: true })).toEqual({ active: true });
-		expect(_test.parseFastModeState({ active: false })).toEqual({ active: false });
-		expect(_test.parseFastModeState({ active: "yes" })).toBeUndefined();
-		expect(_test.parseFastModeState({})).toBeUndefined();
-		expect(_test.parseFastModeState(null)).toBeUndefined();
-	});
-
 	it("parses supported model keys and recognizes supported fast models", () => {
 		const supportedModels = _test.parseSupportedModels(["openai/gpt-5.4", "openai-codex/gpt-5.4"]) ?? [];
 		expect(_test.parseSupportedModelKey("openai/gpt-5.4")).toEqual({ provider: "openai", id: "gpt-5.4" });

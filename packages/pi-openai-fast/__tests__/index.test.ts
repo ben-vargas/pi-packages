@@ -166,7 +166,7 @@ describe("pi-openai-fast", () => {
 			);
 			await command.handler("on", ctx);
 
-			expect(mockPi.appendEntry).toHaveBeenCalledWith(_test.FAST_STATE_ENTRY, { active: true });
+			expect(mockPi.appendEntry).not.toHaveBeenCalled();
 			expect(ui.notify).toHaveBeenCalledWith("Fast mode is on for openai/gpt-5.4.", "info");
 
 			const payload = beforeProviderRequest(
@@ -247,7 +247,7 @@ describe("pi-openai-fast", () => {
 			);
 			await sessionStart({ type: "session_start" }, ctx);
 
-			expect(mockPi.appendEntry).toHaveBeenCalledWith(_test.FAST_STATE_ENTRY, { active: true });
+			expect(mockPi.appendEntry).not.toHaveBeenCalled();
 			expect(ui.notify).toHaveBeenCalledWith("Fast mode is on for openai/gpt-5.5.", "info");
 			expect(
 				beforeProviderRequest(
@@ -260,7 +260,7 @@ describe("pi-openai-fast", () => {
 		}
 	});
 
-	it("persists restored off state into branch history", async () => {
+	it("ignores resumed session state and uses config-backed startup state", async () => {
 		const { cwd, homeDir, cleanup } = createTempWorkspace();
 		try {
 			vi.stubEnv("HOME", homeDir);
@@ -272,15 +272,29 @@ describe("pi-openai-fast", () => {
 			piOpenAIFast(mockPi as unknown as ExtensionAPI);
 
 			const sessionStart = getRegisteredHandler(mockPi, "session_start");
+			const beforeProviderRequest = getRegisteredHandler(mockPi, "before_provider_request");
+			const savedState = [
+				{
+					type: "custom",
+					customType: "pi-openai-fast.state",
+					data: { active: true },
+				},
+			];
 			const { ctx, ui } = createMockContext(
 				{ provider: "openai", id: "gpt-5.4" } as ExtensionContext["model"],
-				[],
+				savedState,
 				cwd,
 			);
 			await sessionStart({ type: "session_start" }, ctx);
 
-			expect(mockPi.appendEntry).toHaveBeenCalledWith(_test.FAST_STATE_ENTRY, { active: false });
+			expect(mockPi.appendEntry).not.toHaveBeenCalled();
 			expect(ui.notify).not.toHaveBeenCalled();
+			expect(
+				beforeProviderRequest(
+					{ type: "before_provider_request", payload: { input: "hello" } } as BeforeProviderRequestEvent,
+					ctx,
+				),
+			).toBeUndefined();
 		} finally {
 			cleanup();
 		}
@@ -347,7 +361,7 @@ describe("pi-openai-fast", () => {
 		}
 	});
 
-	it("restores session state before config state and honors the --fast flag", async () => {
+	it("ignores resumed session state and still honors the --fast flag", async () => {
 		const { cwd, homeDir, cleanup } = createTempWorkspace();
 		try {
 			vi.stubEnv("HOME", homeDir);
@@ -355,7 +369,7 @@ describe("pi-openai-fast", () => {
 			const savedState = [
 				{
 					type: "custom",
-					customType: _test.FAST_STATE_ENTRY,
+					customType: "pi-openai-fast.state",
 					data: { active: true },
 				},
 			];
@@ -382,7 +396,7 @@ describe("pi-openai-fast", () => {
 					{ type: "before_provider_request", payload: { input: "hello" } } as BeforeProviderRequestEvent,
 					restoredContext.ctx,
 				),
-			).toEqual({ input: "hello", service_tier: "priority" });
+			).toBeUndefined();
 
 			const flaggedPi = createMockPi(true);
 			piOpenAIFast(flaggedPi as unknown as ExtensionAPI);
@@ -390,12 +404,12 @@ describe("pi-openai-fast", () => {
 			const flaggedSessionStart = getRegisteredHandler(flaggedPi, "session_start");
 			const flaggedContext = createMockContext(
 				{ provider: "openai", id: "gpt-5.4" } as ExtensionContext["model"],
-				[],
+				savedState,
 				cwd,
 			);
 			await flaggedSessionStart({ type: "session_start" }, flaggedContext.ctx);
 
-			expect(flaggedPi.appendEntry).toHaveBeenCalledWith(_test.FAST_STATE_ENTRY, { active: true });
+			expect(flaggedPi.appendEntry).not.toHaveBeenCalled();
 			expect(flaggedContext.ui.notify).toHaveBeenCalledWith("Fast mode is on for openai/gpt-5.4.", "info");
 		} finally {
 			cleanup();

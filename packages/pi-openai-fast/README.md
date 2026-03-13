@@ -26,6 +26,7 @@ pi -e npm:@benvargas/pi-openai-fast
 - `/fast status` reports the current fast-mode state.
 - `--fast` starts the session with fast mode enabled.
 - By default, fast mode persists across new pi sessions via a JSON config file.
+- Startup state comes from the selected config file, not from resumed session/thread history.
 
 Example:
 
@@ -58,15 +59,15 @@ Default config:
 Settings:
 
 - `persistState`: when `true`, `/fast` writes the current on/off state to config so it resumes in new pi sessions. Default: `true`.
-- `active`: persisted fast-mode state used when `persistState` is enabled.
+- `active`: persisted fast-mode state used on startup when `persistState` is enabled.
 - `supportedModels`: list of `provider/model-id` strings that should receive `service_tier=priority`.
 
-Project config overrides global config. If fast mode is enabled on a model that is not in `supportedModels`, the setting stays on but requests are left unchanged until you switch back to a configured model.
+Project config overrides global config. `/fast on` and `/fast off` write to the selected config file, so if a project config exists the remembered state is project-specific. If fast mode is enabled on a model that is not in `supportedModels`, the setting stays on but requests are left unchanged until you switch back to a configured model.
 
 ## Notes
 
-- Fast mode still stores session state in the current session branch.
 - When `persistState` is enabled, the last `/fast` setting also carries across brand-new pi sessions.
+- Resumed sessions do not override the config-backed startup state.
 - On configured models, fast mode maps to OpenAI `service_tier=priority`.
 
 ## Uninstall
