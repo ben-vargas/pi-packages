@@ -33,13 +33,14 @@
       "./packages/pi-exa-mcp/extensions/index.ts",
       "./packages/pi-firecrawl/extensions/index.ts",
       "./packages/pi-ancestor-discovery/extensions/index.ts",
-      "./packages/pi-cut-stack/extensions/index.ts"
+      "./packages/pi-cut-stack/extensions/index.ts",
+      "./packages/pi-openai-fast/extensions/index.ts"
     ]
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.5",
-    "@mariozechner/pi-ai": "*",
-    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-ai": "^0.57.0",
+    "@mariozechner/pi-coding-agent": "^0.57.0",
     "@sinclair/typebox": "^0.34.0",
     "@types/node": "^22.0.0",
     "typescript": "^5.5.0",
