@@ -247,6 +247,7 @@ describe("pi-openai-fast", () => {
 			);
 			await sessionStart({ type: "session_start" }, ctx);
 
+			expect(mockPi.appendEntry).toHaveBeenCalledWith(_test.FAST_STATE_ENTRY, { active: true });
 			expect(ui.notify).toHaveBeenCalledWith("Fast mode is on for openai/gpt-5.5.", "info");
 			expect(
 				beforeProviderRequest(
@@ -254,6 +255,93 @@ describe("pi-openai-fast", () => {
 					ctx,
 				),
 			).toEqual({ input: "hello", service_tier: "priority" });
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("persists restored off state into branch history", async () => {
+		const { cwd, homeDir, cleanup } = createTempWorkspace();
+		try {
+			vi.stubEnv("HOME", homeDir);
+			const { globalConfigPath } = _test.getConfigPaths(cwd, homeDir);
+			mkdirSync(join(homeDir, ".pi", "agent", "extensions"), { recursive: true });
+			writeFileSync(globalConfigPath, `${JSON.stringify({ persistState: true, active: false }, null, 2)}\n`, "utf-8");
+
+			const mockPi = createMockPi();
+			piOpenAIFast(mockPi as unknown as ExtensionAPI);
+
+			const sessionStart = getRegisteredHandler(mockPi, "session_start");
+			const { ctx, ui } = createMockContext(
+				{ provider: "openai", id: "gpt-5.4" } as ExtensionContext["model"],
+				[],
+				cwd,
+			);
+			await sessionStart({ type: "session_start" }, ctx);
+
+			expect(mockPi.appendEntry).toHaveBeenCalledWith(_test.FAST_STATE_ENTRY, { active: false });
+			expect(ui.notify).not.toHaveBeenCalled();
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("uses cached config for provider requests and refreshes it on command execution", async () => {
+		const { cwd, homeDir, cleanup } = createTempWorkspace();
+		try {
+			vi.stubEnv("HOME", homeDir);
+			const { globalConfigPath } = _test.getConfigPaths(cwd, homeDir);
+			mkdirSync(join(homeDir, ".pi", "agent", "extensions"), { recursive: true });
+			writeFileSync(
+				globalConfigPath,
+				`${JSON.stringify({ persistState: true, active: true, supportedModels: ["openai/gpt-5.5"] }, null, 2)}\n`,
+				"utf-8",
+			);
+
+			const mockPi = createMockPi();
+			piOpenAIFast(mockPi as unknown as ExtensionAPI);
+
+			const sessionStart = getRegisteredHandler(mockPi, "session_start");
+			const beforeProviderRequest = getRegisteredHandler(mockPi, "before_provider_request");
+			const command = getRegisteredCommand(mockPi, "fast");
+			const { ctx, ui } = createMockContext(
+				{ provider: "openai", id: "gpt-5.5" } as ExtensionContext["model"],
+				[],
+				cwd,
+			);
+
+			await sessionStart({ type: "session_start" }, ctx);
+			expect(
+				beforeProviderRequest(
+					{ type: "before_provider_request", payload: { input: "hello" } } as BeforeProviderRequestEvent,
+					ctx,
+				),
+			).toEqual({ input: "hello", service_tier: "priority" });
+
+			writeFileSync(
+				globalConfigPath,
+				`${JSON.stringify({ persistState: true, active: true, supportedModels: ["openai/gpt-5.4"] }, null, 2)}\n`,
+				"utf-8",
+			);
+
+			expect(
+				beforeProviderRequest(
+					{ type: "before_provider_request", payload: { input: "hello" } } as BeforeProviderRequestEvent,
+					ctx,
+				),
+			).toEqual({ input: "hello", service_tier: "priority" });
+
+			await command.handler("status", ctx);
+			expect(ui.notify).toHaveBeenLastCalledWith(
+				"Fast mode is on, but openai/gpt-5.5 does not support it. Supported models: openai/gpt-5.4.",
+				"info",
+			);
+			expect(
+				beforeProviderRequest(
+					{ type: "before_provider_request", payload: { input: "hello" } } as BeforeProviderRequestEvent,
+					ctx,
+				),
+			).toBeUndefined();
 		} finally {
 			cleanup();
 		}
