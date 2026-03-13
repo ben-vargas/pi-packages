@@ -1,3 +1,15 @@
+/**
+ * OpenAI fast mode for pi.
+ *
+ * `/fast` and `--fast` toggle `service_tier=priority` for configured models.
+ * This extension does not change the selected model, thinking level, tools, or prompts.
+ *
+ * Startup state comes from `pi-openai-fast.json`, not resumed session history.
+ * Config precedence is project `.pi/extensions/pi-openai-fast.json` over
+ * global `~/.pi/agent/extensions/pi-openai-fast.json`.
+ *
+ * `supportedModels` controls which `provider/model-id` pairs receive the flag.
+ */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
