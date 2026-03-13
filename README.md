@@ -14,6 +14,7 @@ Pi packages can include extensions, skills, prompt templates, and themes. See th
 | [@benvargas/pi-firecrawl](./packages/pi-firecrawl/) | Extension | Firecrawl tools — scrape, map, search |
 | [@benvargas/pi-ancestor-discovery](./packages/pi-ancestor-discovery/) | Extension | Ancestor discovery for skills, prompts, themes |
 | [@benvargas/pi-cut-stack](./packages/pi-cut-stack/) | Extension | Cut-stack editor shortcuts |
+| [@benvargas/pi-openai-fast](./packages/pi-openai-fast/) | Extension | `/fast` toggle for OpenAI priority service tier on supported GPT-5.4 models |
 
 Each package has its own README with setup instructions, usage, and configuration details.
 
@@ -53,6 +54,7 @@ pi install npm:@benvargas/pi-exa-mcp
 pi install npm:@benvargas/pi-firecrawl
 pi install npm:@benvargas/pi-ancestor-discovery
 pi install npm:@benvargas/pi-cut-stack
+pi install npm:@benvargas/pi-openai-fast
 ```
 
 </details>
@@ -81,6 +83,7 @@ pi remove npm:@benvargas/pi-exa-mcp
 pi remove npm:@benvargas/pi-firecrawl
 pi remove npm:@benvargas/pi-ancestor-discovery
 pi remove npm:@benvargas/pi-cut-stack
+pi remove npm:@benvargas/pi-openai-fast
 ```
 
 </details>
