@@ -1,8 +1,8 @@
 # @benvargas/pi-openai-fast
 
-Session-scoped `/fast` toggle for pi that enables OpenAI priority service tier on supported GPT-5.4 models.
+`/fast` toggle for pi that enables OpenAI priority service tier on configured models.
 
-This extension does not change the model, thinking level, tools, or prompts. It only adds `service_tier=priority` to provider requests when fast mode is active and the current model supports it.
+This extension does not change the model, thinking level, tools, or prompts. It only adds `service_tier=priority` to provider requests when fast mode is active and the current model matches the configured supported-model list.
 
 Requires pi `0.57.0` or newer.
 
@@ -25,6 +25,7 @@ pi -e npm:@benvargas/pi-openai-fast
 - `/fast off` explicitly disables fast mode.
 - `/fast status` reports the current fast-mode state.
 - `--fast` starts the session with fast mode enabled.
+- By default, fast mode persists across new pi sessions via a JSON config file.
 
 Example:
 
@@ -32,17 +33,41 @@ Example:
 pi -e npm:@benvargas/pi-openai-fast --fast
 ```
 
-## Supported Models
+## Config
 
-- `openai/gpt-5.4`
-- `openai-codex/gpt-5.4`
+Config files follow the same project-over-global pattern as the other packages:
 
-If fast mode is enabled on an unsupported model, the setting stays on but requests are left unchanged until you switch back to a supported model.
+- Project: `<repo>/.pi/extensions/pi-openai-fast.json`
+- Global: `~/.pi/agent/extensions/pi-openai-fast.json`
+
+If neither exists, the extension writes a default global config on first run.
+
+Default config:
+
+```json
+{
+  "persistState": true,
+  "active": false,
+  "supportedModels": [
+    "openai/gpt-5.4",
+    "openai-codex/gpt-5.4"
+  ]
+}
+```
+
+Settings:
+
+- `persistState`: when `true`, `/fast` writes the current on/off state to config so it resumes in new pi sessions. Default: `true`.
+- `active`: persisted fast-mode state used when `persistState` is enabled.
+- `supportedModels`: list of `provider/model-id` strings that should receive `service_tier=priority`.
+
+Project config overrides global config. If fast mode is enabled on a model that is not in `supportedModels`, the setting stays on but requests are left unchanged until you switch back to a configured model.
 
 ## Notes
 
-- Fast mode is stored as session state, so it persists with the session branch.
-- On supported models, fast mode maps to OpenAI `service_tier=priority`.
+- Fast mode still stores session state in the current session branch.
+- When `persistState` is enabled, the last `/fast` setting also carries across brand-new pi sessions.
+- On configured models, fast mode maps to OpenAI `service_tier=priority`.
 
 ## Uninstall
 
