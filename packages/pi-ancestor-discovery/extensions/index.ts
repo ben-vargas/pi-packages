@@ -17,10 +17,6 @@ export interface ResourcesDiscoverResult {
 	themePaths?: string[];
 }
 
-type ResourcesDiscoverHandler = (
-	event: ResourcesDiscoverEvent,
-) => ResourcesDiscoverResult | undefined | Promise<ResourcesDiscoverResult | undefined>;
-
 export interface ResourceConfig {
 	enabled?: boolean;
 	searchPaths?: string[] | string;
@@ -130,7 +126,7 @@ export function discoverResources(options: DiscoverOptions): {
 }
 
 export default function (pi: ExtensionAPI): void {
-	onResourcesDiscover(pi, (event) => {
+	pi.on("resources_discover", (event) => {
 		const cwd = event.cwd ?? process.cwd();
 		const config = resolveConfig(cwd);
 		return discoverResources({
@@ -263,15 +259,6 @@ function expandHome(input: string): string {
 	if (input.startsWith("~/")) return join(homedir(), input.slice(2));
 	if (input.startsWith("~")) return join(homedir(), input.slice(1));
 	return input;
-}
-
-function onResourcesDiscover(pi: ExtensionAPI, handler: ResourcesDiscoverHandler): void {
-	const typedOn = (
-		pi as unknown as {
-			on: (event: "resources_discover", handler: ResourcesDiscoverHandler) => void;
-		}
-	).on;
-	typedOn("resources_discover", handler);
 }
 
 export const _test = {
