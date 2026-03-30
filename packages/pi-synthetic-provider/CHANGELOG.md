@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.9] - 2026-03-29
+
+### Changed
+- Updated the `session_start` live provider refresh path to use `pi.registerProvider(...)`, keeping Synthetic model refresh aligned with current pi runtime behavior.
+- Updated `/synthetic-quota` to recognize Synthetic's hybrid and enhanced quota payloads, prioritizing rolling five-hour and weekly token limits ahead of search usage for newer accounts.
+- Increased quota percentage precision in the overlay from one decimal place to two decimals for closer parity with the Synthetic website.
+
+### Fixed
+- Hid empty zero-limit tool-call buckets such as `freeToolCalls: { limit: 0, requests: 0 }` when the feature is not enabled.
+- Fixed `/synthetic-quota` overlay dismissal so `Esc`, standard `Enter`, and keypad `Enter` all close the window consistently across terminal input modes.
+
+### Docs
+- Documented `/synthetic-quota` in the package README and added notes covering newer Synthetic quota systems and current pi compatibility expectations.
+
 ## [1.1.8] - 2026-02-25
 
 ### Added

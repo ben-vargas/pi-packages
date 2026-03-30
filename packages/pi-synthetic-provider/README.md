@@ -68,6 +68,7 @@ pi --model synthetic
 ### Extension Command
 
 - `/synthetic-models` -- display all available models with pricing and capabilities
+- `/synthetic-quota` -- display current Synthetic API quota usage, including rolling five-hour, weekly token, and search limits when available
 
 ## Available Models
 
@@ -95,6 +96,11 @@ When multiple sources are configured, pi checks in this order:
 
 - pi v0.51.0 or later
 - A Synthetic API key from [synthetic.new](https://synthetic.new)
+
+## Notes
+
+- On newer Synthetic accounts, `/synthetic-quota` prefers the current rolling five-hour and weekly token limits over the legacy subscription bucket, while still showing search usage when present.
+- The provider refresh path is compatible with current pi releases that expect dynamic provider updates to go through `pi.registerProvider(...)`.
 
 ## Uninstall
 

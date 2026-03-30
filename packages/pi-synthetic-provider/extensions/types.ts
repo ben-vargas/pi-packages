@@ -32,6 +32,19 @@ export interface QuotaBucket {
 	renewsAt: string;
 }
 
+export interface WeeklyTokenLimit {
+	nextRegenAt: string;
+	percentRemaining: number;
+}
+
+export interface RollingFiveHourLimit {
+	nextTickAt: string;
+	tickPercent: number;
+	remaining: number;
+	max: number;
+	limited: boolean;
+}
+
 export interface SyntheticQuotaResponse {
 	subscription?: QuotaBucket;
 	search?: {
@@ -39,4 +52,6 @@ export interface SyntheticQuotaResponse {
 	};
 	freeToolCalls?: QuotaBucket;
 	toolCallDiscounts?: QuotaBucket;
+	weeklyTokenLimit?: WeeklyTokenLimit;
+	rollingFiveHourLimit?: RollingFiveHourLimit;
 }

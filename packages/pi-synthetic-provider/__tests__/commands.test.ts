@@ -19,7 +19,9 @@ interface MockSelectList {
 
 let lastSelectList: MockSelectList | null = null;
 
-vi.mock("@mariozechner/pi-tui", () => {
+vi.mock("@mariozechner/pi-tui", async (importOriginal) => {
+	const original = await importOriginal<typeof import("@mariozechner/pi-tui")>();
+
 	class MockBox {
 		addChild = vi.fn();
 		render = vi.fn().mockReturnValue([]);
@@ -47,6 +49,7 @@ vi.mock("@mariozechner/pi-tui", () => {
 		}
 	}
 	return {
+		...original,
 		Box: MockBox,
 		Container: MockContainer,
 		Spacer: MockSpacer,
@@ -460,6 +463,89 @@ describe("/synthetic-quota command", () => {
 		expect(doneFn).not.toHaveBeenCalled();
 		renderer.handleInput("\r"); // Enter
 		expect(doneFn).toHaveBeenCalledTimes(1);
+	});
+
+	it("renderer handles keypad Enter to close", async () => {
+		const mockPi = createMockPi();
+		registerSyntheticQuotaCommand(mockPi as unknown as ExtensionAPI);
+		const handler = getHandler(mockPi, "synthetic-quota");
+
+		const mockResponse = {
+			ok: true,
+			json: vi.fn().mockResolvedValue({
+				subscription: { limit: 100, requests: 10, renewsAt: new Date(Date.now() + 1800_000).toISOString() },
+			}),
+		};
+		vi.mocked(fetch).mockResolvedValue(mockResponse as unknown as Response);
+
+		const { customFn, getCapturedRenderer, doneFn } = createCapturingCustomMock();
+		const ctx = createMockCtx({}, customFn);
+		await handler("", ctx);
+
+		const renderer = getCapturedRenderer();
+		expect(doneFn).not.toHaveBeenCalled();
+		renderer.handleInput("\x1bOM"); // keypad Enter in some terminals
+		expect(doneFn).toHaveBeenCalledTimes(1);
+	});
+
+	it("renderer handles normalized Escape variants to close", async () => {
+		const mockPi = createMockPi();
+		registerSyntheticQuotaCommand(mockPi as unknown as ExtensionAPI);
+		const handler = getHandler(mockPi, "synthetic-quota");
+
+		const mockResponse = {
+			ok: true,
+			json: vi.fn().mockResolvedValue({
+				subscription: { limit: 100, requests: 10, renewsAt: new Date(Date.now() + 1800_000).toISOString() },
+			}),
+		};
+		vi.mocked(fetch).mockResolvedValue(mockResponse as unknown as Response);
+
+		const { customFn, getCapturedRenderer, doneFn } = createCapturingCustomMock();
+		const ctx = createMockCtx({}, customFn);
+		await handler("", ctx);
+
+		const renderer = getCapturedRenderer();
+		expect(doneFn).not.toHaveBeenCalled();
+		renderer.handleInput("\x1b[27;1;27~"); // xterm modifyOtherKeys Escape
+		expect(doneFn).toHaveBeenCalledTimes(1);
+	});
+
+	it("opens overlay for hybrid legacy + enhanced quota responses", async () => {
+		const mockPi = createMockPi();
+		registerSyntheticQuotaCommand(mockPi as unknown as ExtensionAPI);
+		const handler = getHandler(mockPi, "synthetic-quota");
+
+		const mockResponse = {
+			ok: true,
+			json: vi.fn().mockResolvedValue({
+				subscription: { limit: 600, requests: 0, renewsAt: new Date(Date.now() + 3600_000).toISOString() },
+				search: {
+					hourly: { limit: 250, requests: 0, renewsAt: new Date(Date.now() + 1800_000).toISOString() },
+				},
+				freeToolCalls: { limit: 0, requests: 0, renewsAt: new Date(Date.now() + 86_400_000).toISOString() },
+				weeklyTokenLimit: {
+					nextRegenAt: new Date(Date.now() + 12 * 3600_000).toISOString(),
+					percentRemaining: 99.9,
+				},
+				rollingFiveHourLimit: {
+					nextTickAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+					tickPercent: 0.05,
+					remaining: 600,
+					max: 600,
+					limited: false,
+				},
+			}),
+		};
+		vi.mocked(fetch).mockResolvedValue(mockResponse as unknown as Response);
+
+		const { customFn, getCapturedRenderer } = createCapturingCustomMock();
+		const ctx = createMockCtx({}, customFn);
+		await handler("", ctx);
+
+		expect(ctx.ui.custom).toHaveBeenCalledTimes(1);
+		const renderer = getCapturedRenderer();
+		expect(() => renderer.render(80)).not.toThrow();
 	});
 
 	it("shows error notification when quota fetch fails", async () => {

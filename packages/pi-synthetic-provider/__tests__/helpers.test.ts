@@ -3,8 +3,11 @@ import {
 	buildProgressBar,
 	formatTimeRemaining,
 	getFallbackModels,
+	getQuotaSystemLabel,
 	getUsageColor,
+	hasVisibleQuotaBucket,
 	parsePrice,
+	shouldDisplaySubscriptionQuota,
 } from "../extensions/index.js";
 
 describe("pi-synthetic-provider helpers", () => {
@@ -98,6 +101,109 @@ describe("quota helpers", () => {
 		it("returns '< 1m' for very short durations", () => {
 			const nearFuture = new Date(Date.now() + 30_000).toISOString();
 			expect(formatTimeRemaining(nearFuture)).toBe("< 1m");
+		});
+	});
+
+	describe("hasVisibleQuotaBucket", () => {
+		it("returns false for missing buckets", () => {
+			expect(hasVisibleQuotaBucket(undefined)).toBe(false);
+		});
+
+		it("returns false for disabled zero buckets", () => {
+			expect(
+				hasVisibleQuotaBucket({
+					limit: 0,
+					requests: 0,
+					renewsAt: new Date(Date.now() + 60_000).toISOString(),
+				}),
+			).toBe(false);
+		});
+
+		it("returns true when the bucket has a limit", () => {
+			expect(
+				hasVisibleQuotaBucket({
+					limit: 10,
+					requests: 0,
+					renewsAt: new Date(Date.now() + 60_000).toISOString(),
+				}),
+			).toBe(true);
+		});
+	});
+
+	describe("getQuotaSystemLabel", () => {
+		it("detects classic quota systems", () => {
+			expect(
+				getQuotaSystemLabel({
+					subscription: {
+						limit: 100,
+						requests: 10,
+						renewsAt: new Date(Date.now() + 60_000).toISOString(),
+					},
+				}),
+			).toBe("Classic quota system");
+		});
+
+		it("detects enhanced quota systems", () => {
+			expect(
+				getQuotaSystemLabel({
+					weeklyTokenLimit: {
+						nextRegenAt: new Date(Date.now() + 60_000).toISOString(),
+						percentRemaining: 75,
+					},
+				}),
+			).toBe("Enhanced quota system");
+		});
+
+		it("detects hybrid quota systems", () => {
+			expect(
+				getQuotaSystemLabel({
+					subscription: {
+						limit: 100,
+						requests: 10,
+						renewsAt: new Date(Date.now() + 60_000).toISOString(),
+					},
+					rollingFiveHourLimit: {
+						nextTickAt: new Date(Date.now() + 60_000).toISOString(),
+						tickPercent: 0.05,
+						remaining: 90,
+						max: 100,
+						limited: false,
+					},
+				}),
+			).toBe("Hybrid quota system");
+		});
+	});
+
+	describe("shouldDisplaySubscriptionQuota", () => {
+		it("shows subscription quota for classic users", () => {
+			expect(
+				shouldDisplaySubscriptionQuota({
+					subscription: {
+						limit: 100,
+						requests: 10,
+						renewsAt: new Date(Date.now() + 60_000).toISOString(),
+					},
+				}),
+			).toBe(true);
+		});
+
+		it("hides subscription quota for hybrid users", () => {
+			expect(
+				shouldDisplaySubscriptionQuota({
+					subscription: {
+						limit: 600,
+						requests: 0,
+						renewsAt: new Date(Date.now() + 60_000).toISOString(),
+					},
+					rollingFiveHourLimit: {
+						nextTickAt: new Date(Date.now() + 60_000).toISOString(),
+						tickPercent: 0.05,
+						remaining: 600,
+						max: 600,
+						limited: false,
+					},
+				}),
+			).toBe(false);
 		});
 	});
 });
