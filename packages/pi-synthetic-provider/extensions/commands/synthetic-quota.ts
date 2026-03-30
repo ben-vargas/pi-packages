@@ -4,10 +4,18 @@
  */
 
 import { DynamicBorder, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Box, Container, Spacer, Text } from "@mariozechner/pi-tui";
+import { Box, Container, matchesKey, Spacer, Text } from "@mariozechner/pi-tui";
 import { getSyntheticApiKey } from "../auth.js";
-import { buildProgressBar, fetchSyntheticQuota, formatTimeRemaining, getUsageColor } from "../quota.js";
-import type { QuotaBucket } from "../types.js";
+import {
+	buildProgressBar,
+	fetchSyntheticQuota,
+	formatTimeRemaining,
+	getQuotaSystemLabel,
+	getUsageColor,
+	hasVisibleQuotaBucket,
+	shouldDisplaySubscriptionQuota,
+} from "../quota.js";
+import type { QuotaBucket, RollingFiveHourLimit, WeeklyTokenLimit } from "../types.js";
 
 export function registerSyntheticQuotaCommand(pi: ExtensionAPI): void {
 	pi.registerCommand("synthetic-quota", {
@@ -42,19 +50,32 @@ export function registerSyntheticQuotaCommand(pi: ExtensionAPI): void {
 						overlayRows = tui.terminal.rows;
 						overlayCols = tui.terminal.columns;
 
+						const quotaSystemLabel = getQuotaSystemLabel(quota);
+						const showSubscription = shouldDisplaySubscriptionQuota(quota);
 						// API has moved tool-call quota from `toolCallDiscounts` to `freeToolCalls`;
 						// keep both for backwards compatibility with older payloads.
-						const toolCallBucket = quota.toolCallDiscounts ?? quota.freeToolCalls;
+						const toolCallBucket = hasVisibleQuotaBucket(quota.toolCallDiscounts)
+							? quota.toolCallDiscounts
+							: hasVisibleQuotaBucket(quota.freeToolCalls)
+								? quota.freeToolCalls
+								: undefined;
+						const visibleSections = [
+							showSubscription,
+							Boolean(quota.rollingFiveHourLimit),
+							Boolean(quota.weeklyTokenLimit),
+							hasVisibleQuotaBucket(quota.search?.hourly),
+							Boolean(toolCallBucket),
+						].filter(Boolean).length;
 						// Count how many sections we'll render to estimate needed height
-						const bucketCount = [quota.subscription, toolCallBucket, quota.search?.hourly].filter(Boolean).length;
 						// Normal layout: ~7 lines/bucket + 3 separator lines between + 6 chrome
 						// Compact layout: ~3 lines/bucket + 1 separator line between + 4 chrome
-						const normalHeight = bucketCount * 7 + (bucketCount - 1) * 3 + 6;
+						const normalHeight = visibleSections * 7 + Math.max(0, visibleSections - 1) * 3 + 6;
 						const compact = overlayRows < 45 || normalHeight > overlayRows * 0.75;
 						const barWidth = compact ? 20 : BAR_WIDTH;
+						const formatPercent = (value: number) => `${value.toFixed(2)}%`;
 
 						const renderBucket = (label: string, bucket: QuotaBucket | undefined, icon: string): string[] => {
-							if (!bucket) return [];
+							if (!hasVisibleQuotaBucket(bucket)) return [];
 
 							const { bar, percent } = buildProgressBar(bucket.requests, bucket.limit, barWidth);
 							const color = getUsageColor(percent);
@@ -64,41 +85,115 @@ export function registerSyntheticQuotaCommand(pi: ExtensionAPI): void {
 							if (compact) {
 								return [
 									`${icon}  ${theme.fg("accent", theme.bold(label))}`,
-									`   ${theme.fg(color, bar)}  ${theme.fg(color, `${percent.toFixed(1)}%`)} used`,
-									`   ${theme.bold(String(bucket.requests))} / ${bucket.limit} req ${theme.fg("muted", "·")} ${theme.fg(remaining > 0 ? "success" : "error", remaining.toFixed(1))} left ${theme.fg("muted", "·")} resets ${theme.fg("accent", renewalStr)}`,
+									`   ${theme.fg(color, bar)}  ${theme.fg(color, formatPercent(percent))} used`,
+									`   ${theme.bold(String(bucket.requests))} / ${bucket.limit} req ${theme.fg("muted", "·")} ${theme.fg(remaining > 0 ? "success" : "error", String(remaining))} left ${theme.fg("muted", "·")} resets ${theme.fg("accent", renewalStr)}`,
 								];
 							}
 
 							return [
 								`${icon}  ${theme.fg("accent", theme.bold(label))}`,
 								"",
-								`   ${theme.fg(color, bar)}  ${theme.fg(color, `${percent.toFixed(1)}%`)} used`,
+								`   ${theme.fg(color, bar)}  ${theme.fg(color, formatPercent(percent))} used`,
 								"",
 								`   ${theme.fg("muted", "Used:")}     ${theme.bold(String(bucket.requests))} / ${bucket.limit} requests`,
-								`   ${theme.fg("muted", "Remaining:")} ${theme.fg(remaining > 0 ? "success" : "error", remaining.toFixed(1))} requests`,
+								`   ${theme.fg("muted", "Remaining:")} ${theme.fg(remaining > 0 ? "success" : "error", String(remaining))} requests`,
 								`   ${theme.fg("muted", "Resets in:")} ${theme.fg("accent", renewalStr)}`,
 							];
 						};
 
+						const renderWeeklyLimit = (label: string, weekly: WeeklyTokenLimit | undefined, icon: string): string[] => {
+							if (!weekly) return [];
+
+							const percentRemaining = Math.max(0, Math.min(weekly.percentRemaining, 100));
+							const percentUsed = 100 - percentRemaining;
+							const { bar } = buildProgressBar(percentUsed, 100, barWidth);
+							const color = getUsageColor(percentUsed);
+							const renewalStr = formatTimeRemaining(weekly.nextRegenAt);
+
+							if (compact) {
+								return [
+									`${icon}  ${theme.fg("accent", theme.bold(label))}`,
+									`   ${theme.fg(color, bar)}  ${theme.fg(color, formatPercent(percentUsed))} used`,
+									`   ${theme.fg("success", formatPercent(percentRemaining))} remaining ${theme.fg("muted", "·")} regenerates ${theme.fg("accent", renewalStr)}`,
+								];
+							}
+
+							return [
+								`${icon}  ${theme.fg("accent", theme.bold(label))}`,
+								"",
+								`   ${theme.fg(color, bar)}  ${theme.fg(color, formatPercent(percentUsed))} used`,
+								"",
+								`   ${theme.fg("muted", "Remaining:")} ${theme.fg("success", formatPercent(percentRemaining))}`,
+								`   ${theme.fg("muted", "Used:")}      ${theme.bold(formatPercent(percentUsed))}`,
+								`   ${theme.fg("muted", "Regens in:")} ${theme.fg("accent", renewalStr)}`,
+							];
+						};
+
+						const renderRollingLimit = (
+							label: string,
+							rolling: RollingFiveHourLimit | undefined,
+							icon: string,
+						): string[] => {
+							if (!rolling) return [];
+
+							const used = Math.max(0, rolling.max - rolling.remaining);
+							const { bar, percent } = buildProgressBar(used, rolling.max, barWidth);
+							const color = getUsageColor(percent);
+							const tickStr = formatTimeRemaining(rolling.nextTickAt);
+
+							if (compact) {
+								return [
+									`${icon}  ${theme.fg("accent", theme.bold(label))}`,
+									`   ${theme.fg(color, bar)}  ${theme.fg(color, formatPercent(percent))} used`,
+									`   ${theme.bold(String(rolling.remaining))} / ${rolling.max} left ${theme.fg("muted", "·")} ${rolling.limited ? theme.fg("error", "limited now") : theme.fg("success", "available")} ${theme.fg("muted", "·")} ticks ${theme.fg("accent", tickStr)}`,
+								];
+							}
+
+							return [
+								`${icon}  ${theme.fg("accent", theme.bold(label))}`,
+								"",
+								`   ${theme.fg(color, bar)}  ${theme.fg(color, formatPercent(percent))} used`,
+								"",
+								`   ${theme.fg("muted", "Remaining:")} ${theme.bold(String(rolling.remaining))} / ${rolling.max}`,
+								`   ${theme.fg("muted", "Status:")}    ${rolling.limited ? theme.fg("error", "Limited") : theme.fg("success", "Available")}`,
+								`   ${theme.fg("muted", "Next tick:")} ${theme.fg("accent", tickStr)} (${formatPercent(rolling.tickPercent * 100)})`,
+							];
+						};
+
 						const sections: string[][] = [];
-						sections.push(renderBucket("Subscription", quota.subscription, "⚡"));
+						if (showSubscription) {
+							sections.push(renderBucket("Subscription", quota.subscription, "⚡"));
+						}
+						if (quota.rollingFiveHourLimit) {
+							sections.push(renderRollingLimit("Rolling 5h Limit", quota.rollingFiveHourLimit, "⏱"));
+						}
+						if (quota.weeklyTokenLimit) {
+							sections.push(renderWeeklyLimit("Weekly Token Limit", quota.weeklyTokenLimit, "🗓"));
+						}
+						if (hasVisibleQuotaBucket(quota.search?.hourly)) {
+							sections.push(renderBucket("Search (hourly)", quota.search.hourly, "🔍"));
+						}
 						if (toolCallBucket) {
 							const toolCallLabel = quota.toolCallDiscounts ? "Tool Call Discounts" : "Free Tool Calls";
 							sections.push(renderBucket(toolCallLabel, toolCallBucket, "🔧"));
-						}
-						if (quota.search?.hourly) {
-							sections.push(renderBucket("Search (hourly)", quota.search.hourly, "🔍"));
 						}
 
 						const container = new Container();
 						container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
 						container.addChild(new Text(theme.fg("accent", theme.bold("  Synthetic API Quota")), 1, 0));
 
-						if (!compact) {
-							container.addChild(
-								new Text(theme.fg("muted", "  Usage and limits for your Synthetic subscription"), 1, 0),
-							);
-						}
+						container.addChild(
+							new Text(
+								theme.fg(
+									"muted",
+									compact
+										? `  ${quotaSystemLabel}`
+										: `  ${quotaSystemLabel} · usage and limits for your Synthetic account`,
+								),
+								1,
+								0,
+							),
+						);
 
 						container.addChild(new DynamicBorder((s: string) => theme.fg("muted", s)));
 
@@ -133,7 +228,7 @@ export function registerSyntheticQuotaCommand(pi: ExtensionAPI): void {
 							render: (width) => panel.render(width),
 							invalidate: () => panel.invalidate(),
 							handleInput: (data) => {
-								if (data === "\x1b" || data === "\r" || data === "\n") {
+								if (matchesKey(data, "escape") || matchesKey(data, "enter") || matchesKey(data, "ctrl+c")) {
 									done(undefined);
 								}
 							},

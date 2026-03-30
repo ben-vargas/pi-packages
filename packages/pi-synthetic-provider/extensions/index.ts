@@ -61,7 +61,15 @@ import { fetchSyntheticModels, getFallbackModels } from "./models.js";
 // Re-export public API for tests and consumers
 export { parsePrice } from "./formatting.js";
 export { getFallbackModels } from "./models.js";
-export { buildProgressBar, fetchSyntheticQuota, formatTimeRemaining, getUsageColor } from "./quota.js";
+export {
+	buildProgressBar,
+	fetchSyntheticQuota,
+	formatTimeRemaining,
+	getQuotaSystemLabel,
+	getUsageColor,
+	hasVisibleQuotaBucket,
+	shouldDisplaySubscriptionQuota,
+} from "./quota.js";
 
 export default function (pi: ExtensionAPI) {
 	// Register provider synchronously with fallback models.
@@ -76,9 +84,9 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	// After session starts, replace fallback models with live data from the API.
-	// We use ctx.modelRegistry.registerProvider() directly because pi.registerProvider()
-	// queues registrations that are only flushed during runner.initialize(), which has
-	// already completed by the time session_start fires.
+	// pi.registerProvider() now takes effect immediately after startup and also
+	// lets the runtime refresh the current model reference if the provider config
+	// changes beneath an already-selected model.
 	pi.on("session_start", async (_event, ctx) => {
 		const apiKey = await getSyntheticApiKey(ctx);
 		const hasKey = await hasSyntheticApiKey(ctx);
@@ -90,11 +98,11 @@ export default function (pi: ExtensionAPI) {
 			console.log(`  2. Add to ${AUTH_JSON_PATH} (see README for details)`);
 		}
 
-		// Fetch live models and register directly on the model registry
+		// Fetch live models and update the runtime provider registration
 		const models = await fetchSyntheticModels(apiKey);
 
 		if (models.length > 0) {
-			ctx.modelRegistry.registerProvider("synthetic", {
+			pi.registerProvider("synthetic", {
 				baseUrl: SYNTHETIC_API_BASE_URL,
 				apiKey: "SYNTHETIC_API_KEY",
 				api: "openai-completions",

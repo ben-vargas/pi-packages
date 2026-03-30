@@ -3,7 +3,7 @@
  */
 
 import { SYNTHETIC_QUOTAS_ENDPOINT } from "./config.js";
-import type { SyntheticQuotaResponse } from "./types.js";
+import type { QuotaBucket, SyntheticQuotaResponse } from "./types.js";
 
 /**
  * Fetch quota information from the Synthetic API.
@@ -66,4 +66,38 @@ export function getUsageColor(percent: number): "success" | "warning" | "error" 
 	if (percent < 60) return "success";
 	if (percent < 85) return "warning";
 	return "error";
+}
+
+/**
+ * Ignore empty zero-limit buckets that may appear when a quota feature is not enabled.
+ */
+export function hasVisibleQuotaBucket(bucket: QuotaBucket | undefined): bucket is QuotaBucket {
+	if (!bucket) return false;
+	return bucket.limit > 0 || bucket.requests > 0;
+}
+
+/**
+ * Describe which quota system shape the user is currently on.
+ */
+export function getQuotaSystemLabel(quota: SyntheticQuotaResponse): string {
+	const hasLegacyBuckets = [
+		quota.subscription,
+		quota.search?.hourly,
+		quota.toolCallDiscounts,
+		quota.freeToolCalls,
+	].some(hasVisibleQuotaBucket);
+	const hasEnhancedLimits = Boolean(quota.weeklyTokenLimit || quota.rollingFiveHourLimit);
+
+	if (hasLegacyBuckets && hasEnhancedLimits) return "Hybrid quota system";
+	if (hasEnhancedLimits) return "Enhanced quota system";
+	return "Classic quota system";
+}
+
+/**
+ * The legacy subscription bucket is not the primary limiter once the newer
+ * rolling/weekly quota system is present, so hide it for hybrid/enhanced users.
+ */
+export function shouldDisplaySubscriptionQuota(quota: SyntheticQuotaResponse): boolean {
+	const hasEnhancedLimits = Boolean(quota.weeklyTokenLimit || quota.rollingFiveHourLimit);
+	return !hasEnhancedLimits && hasVisibleQuotaBucket(quota.subscription);
 }
