@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.10] - 2026-03-31
+
+### Added
+- Added `hf:zai-org/GLM-5` to fallback models so the provider exposes the new always-on model before the live catalog refresh completes and when the Synthetic API is unavailable.
+
+### Docs
+- Refreshed Synthetic provider docs/comments/tests to reflect GLM-5 availability and current fallback metadata.
+
 ## [1.1.9] - 2026-03-29
 
 ### Changed
