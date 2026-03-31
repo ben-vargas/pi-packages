@@ -72,13 +72,14 @@ pi --model synthetic
 
 ## Available Models
 
-Models are fetched dynamically. As of 2026-02-25, Synthetic provides:
+Models are fetched dynamically. As of 2026-03-31, Synthetic provides:
 
 | Model | ID | Reasoning | Vision | Context | Max Output |
 |-------|-----|-----------|--------|---------|------------|
 | **Kimi K2.5** | `hf:moonshotai/Kimi-K2.5` | Yes | Yes | 262K | 65K |
 | **MiniMax M2.1** | `hf:MiniMaxAI/MiniMax-M2.1` | Yes | No | 196K | 65K |
 | **MiniMax M2.5** | `hf:MiniMaxAI/MiniMax-M2.5` | Yes | Yes | 191K | 65K |
+| **GLM 5** | `hf:zai-org/GLM-5` | Yes | No | 192K | 65K |
 | **GLM 4.7** | `hf:zai-org/GLM-4.7` | Yes | No | 202K | 65K |
 
 Run `/synthetic-models` inside pi for the full, current catalog.
