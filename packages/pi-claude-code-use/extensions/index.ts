@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, existsSync } from "node:fs";
 import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 import type { Api, AssistantMessageEventStream, Context, Model, SimpleStreamOptions } from "@mariozechner/pi-ai";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { type ExtensionAPI, getAgentDir } from "@mariozechner/pi-coding-agent";
 
 const require = createRequire(import.meta.url);
 
@@ -134,6 +135,15 @@ type AnthropicPayload = {
 	[key: string]: unknown;
 };
 
+type ToolInfo = ReturnType<ExtensionAPI["getAllTools"]>[number];
+type RegisteredToolDefinition = Parameters<ExtensionAPI["registerTool"]>[0];
+type ExtensionFactory = (pi: ExtensionAPI) => void | Promise<void>;
+type KnownCompanionExtension = {
+	id: string;
+	baseDirName: string;
+	toolAliases: Array<readonly [originalName: string, aliasName: string]>;
+};
+
 const ALLOWED_TOOL_NAMES = new Set(
 	[
 		"read",
@@ -157,6 +167,47 @@ const ALLOWED_TOOL_NAMES = new Set(
 		"websearch",
 	].map((name) => name.toLowerCase()),
 );
+
+const KNOWN_MONOREPO_TOOL_ALIASES = new Map<string, string>([
+	["web_search_exa", "mcp__exa__web_search"],
+	["get_code_context_exa", "mcp__exa__get_code_context"],
+	["firecrawl_scrape", "mcp__firecrawl__scrape"],
+	["firecrawl_map", "mcp__firecrawl__map"],
+	["firecrawl_search", "mcp__firecrawl__search"],
+	["generate_image", "mcp__antigravity__generate_image"],
+	["image_quota", "mcp__antigravity__image_quota"],
+]);
+
+const KNOWN_COMPANION_EXTENSIONS: KnownCompanionExtension[] = [
+	{
+		id: "exa",
+		baseDirName: "pi-exa-mcp",
+		toolAliases: [
+			["web_search_exa", "mcp__exa__web_search"],
+			["get_code_context_exa", "mcp__exa__get_code_context"],
+		],
+	},
+	{
+		id: "firecrawl",
+		baseDirName: "pi-firecrawl",
+		toolAliases: [
+			["firecrawl_scrape", "mcp__firecrawl__scrape"],
+			["firecrawl_map", "mcp__firecrawl__map"],
+			["firecrawl_search", "mcp__firecrawl__search"],
+		],
+	},
+	{
+		id: "antigravity",
+		baseDirName: "pi-antigravity-image-gen",
+		toolAliases: [
+			["generate_image", "mcp__antigravity__generate_image"],
+			["image_quota", "mcp__antigravity__image_quota"],
+		],
+	},
+];
+
+const capturedToolDefinitionsByExtensionDir = new Map<string, Promise<Map<string, RegisteredToolDefinition>>>();
+const registeredAliasNames = new Set<string>();
 
 function supportsAdaptiveThinking(modelId: string): boolean {
 	return (
@@ -196,6 +247,22 @@ function isTextBlock(value: unknown): value is TextBlock {
 
 function isAnthropicSubscriptionAuthKey(apiKey: string | undefined): boolean {
 	return typeof apiKey === "string" && apiKey.startsWith("sk-ant-oat");
+}
+
+function normalizeToolName(name: string | undefined): string {
+	return (name ?? "").trim().toLowerCase();
+}
+
+function isCoreClaudeCodeToolName(name: string | undefined): boolean {
+	return ALLOWED_TOOL_NAMES.has(normalizeToolName(name));
+}
+
+function isMcpToolName(name: string | undefined): boolean {
+	return normalizeToolName(name).startsWith("mcp__");
+}
+
+function getKnownAliasName(toolName: string | undefined): string | undefined {
+	return KNOWN_MONOREPO_TOOL_ALIASES.get(normalizeToolName(toolName));
 }
 
 function clonePayload(payload: AnthropicPayload): AnthropicPayload {
@@ -240,6 +307,16 @@ function preserveSystemPromptBlocks(system: AnthropicPayload["system"]): TextBlo
 		...block,
 		text: rewritePiSelfReferences(block.text),
 	}));
+}
+
+function getClaudeCodeVisibleToolName(toolName: string | undefined): string | undefined {
+	if (!toolName) {
+		return undefined;
+	}
+	if (isCoreClaudeCodeToolName(toolName) || isMcpToolName(toolName)) {
+		return toolName;
+	}
+	return getKnownAliasName(toolName);
 }
 
 function computeFingerprint(messageText: string, version: string): string {
@@ -316,21 +393,24 @@ function filterToolsForClaudeCode(payload: AnthropicPayload): AnthropicPayload {
 		return payload;
 	}
 
-	const tools = payload.tools.filter((tool) => {
+	const seenToolNames = new Set<string>();
+	const tools = payload.tools.flatMap((tool) => {
 		if (typeof tool?.type === "string" && tool.type.trim().length > 0) {
-			return true;
+			return [tool];
 		}
-		const name = typeof tool?.name === "string" ? tool.name.toLowerCase() : "";
-		return ALLOWED_TOOL_NAMES.has(name);
+		const visibleName = getClaudeCodeVisibleToolName(typeof tool?.name === "string" ? tool.name : undefined);
+		const normalizedVisibleName = normalizeToolName(visibleName);
+		if (!visibleName || seenToolNames.has(normalizedVisibleName)) {
+			return [];
+		}
+		seenToolNames.add(normalizedVisibleName);
+		return [{ ...tool, name: visibleName }];
 	});
 
 	let toolChoice = payload.tool_choice;
-	if (
-		toolChoice?.type === "tool" &&
-		typeof toolChoice.name === "string" &&
-		!ALLOWED_TOOL_NAMES.has(toolChoice.name.toLowerCase())
-	) {
-		toolChoice = undefined;
+	if (toolChoice?.type === "tool" && typeof toolChoice.name === "string") {
+		const visibleToolName = getClaudeCodeVisibleToolName(toolChoice.name);
+		toolChoice = visibleToolName ? { ...toolChoice, name: visibleToolName } : undefined;
 	}
 
 	return {
@@ -339,6 +419,198 @@ function filterToolsForClaudeCode(payload: AnthropicPayload): AnthropicPayload {
 		...(toolChoice ? { tool_choice: toolChoice } : {}),
 		...(toolChoice ? {} : { tool_choice: undefined }),
 	};
+}
+
+async function importExtensionFactoryFromDir(baseDir: string): Promise<ExtensionFactory | undefined> {
+	const candidates = [
+		new URL("./index.ts", pathToFileURL(`${baseDir.replace(/\/$/, "")}/`)).href,
+		new URL("./index.js", pathToFileURL(`${baseDir.replace(/\/$/, "")}/`)).href,
+	];
+
+	for (const candidate of candidates) {
+		try {
+			const module = (await import(candidate)) as { default?: unknown };
+			return typeof module.default === "function" ? (module.default as ExtensionFactory) : undefined;
+		} catch {}
+	}
+
+	return undefined;
+}
+
+function getKnownCompanionExtensionCandidateDirs(baseDirName: string): string[] {
+	const candidateDirs = [
+		new URL(`../../${baseDirName}/extensions/`, import.meta.url).pathname,
+		`${getAgentDir()}/git/github.com/ben-vargas/pi-packages/packages/${baseDirName}/extensions`,
+	];
+
+	return candidateDirs.filter(
+		(candidateDir, index) => existsSync(candidateDir) && candidateDirs.indexOf(candidateDir) === index,
+	);
+}
+
+function createCapturePi(realPi: ExtensionAPI, capturedTools: Map<string, RegisteredToolDefinition>): ExtensionAPI {
+	return {
+		on() {},
+		registerTool(tool) {
+			capturedTools.set(tool.name, tool as unknown as RegisteredToolDefinition);
+		},
+		registerCommand() {},
+		registerShortcut() {},
+		registerFlag() {},
+		getFlag(name) {
+			return realPi.getFlag(name);
+		},
+		registerMessageRenderer() {},
+		sendMessage() {},
+		sendUserMessage() {},
+		appendEntry() {},
+		setSessionName() {},
+		getSessionName() {
+			return undefined;
+		},
+		setLabel() {},
+		exec(command, args, options) {
+			return realPi.exec(command, args, options);
+		},
+		getActiveTools() {
+			return realPi.getActiveTools();
+		},
+		getAllTools() {
+			return realPi.getAllTools();
+		},
+		setActiveTools(toolNames) {
+			realPi.setActiveTools(toolNames);
+		},
+		getCommands() {
+			return realPi.getCommands();
+		},
+		setModel(model) {
+			return realPi.setModel(model);
+		},
+		getThinkingLevel() {
+			return realPi.getThinkingLevel();
+		},
+		setThinkingLevel(level) {
+			realPi.setThinkingLevel(level);
+		},
+		registerProvider() {},
+		unregisterProvider() {},
+		events: realPi.events,
+	} as ExtensionAPI;
+}
+
+async function captureToolDefinitionsFromDir(
+	baseDir: string,
+	realPi: ExtensionAPI,
+): Promise<Map<string, RegisteredToolDefinition>> {
+	let capturedPromise = capturedToolDefinitionsByExtensionDir.get(baseDir);
+	if (!capturedPromise) {
+		capturedPromise = (async () => {
+			const factory = await importExtensionFactoryFromDir(baseDir);
+			if (!factory) {
+				return new Map<string, RegisteredToolDefinition>();
+			}
+
+			const capturedTools = new Map<string, RegisteredToolDefinition>();
+			await factory(createCapturePi(realPi, capturedTools));
+			return capturedTools;
+		})();
+		capturedToolDefinitionsByExtensionDir.set(baseDir, capturedPromise);
+	}
+
+	return capturedPromise;
+}
+
+function cloneAliasedToolDefinition(tool: RegisteredToolDefinition, aliasName: string): RegisteredToolDefinition {
+	return {
+		...tool,
+		name: aliasName,
+		label: tool.label?.startsWith("MCP ") ? tool.label : `MCP ${tool.label ?? aliasName}`,
+	};
+}
+
+async function registerKnownMonorepoToolAliases(pi: ExtensionAPI): Promise<void> {
+	const toolsByName = new Map<string, ToolInfo>();
+	for (const tool of pi.getAllTools()) {
+		toolsByName.set(tool.name, tool);
+	}
+
+	const aliasJobs = Array.from(KNOWN_MONOREPO_TOOL_ALIASES.entries()).map(async ([originalName, aliasName]) => {
+		if (registeredAliasNames.has(aliasName) || toolsByName.has(aliasName)) {
+			return;
+		}
+
+		const originalTool = toolsByName.get(originalName);
+		const baseDir = originalTool?.sourceInfo?.baseDir;
+		if (!originalTool || !baseDir) {
+			return;
+		}
+
+		const capturedTools = await captureToolDefinitionsFromDir(baseDir, pi);
+		const definition = capturedTools.get(originalName);
+		if (!definition) {
+			return;
+		}
+
+		pi.registerTool(cloneAliasedToolDefinition(definition, aliasName));
+		registeredAliasNames.add(aliasName);
+	});
+
+	await Promise.all(aliasJobs);
+}
+
+async function eagerRegisterKnownCompanionAliases(pi: ExtensionAPI): Promise<void> {
+	for (const companionExtension of KNOWN_COMPANION_EXTENSIONS) {
+		if (companionExtension.toolAliases.every(([, aliasName]) => registeredAliasNames.has(aliasName))) {
+			continue;
+		}
+
+		let capturedTools = new Map<string, RegisteredToolDefinition>();
+		for (const candidateDir of getKnownCompanionExtensionCandidateDirs(companionExtension.baseDirName)) {
+			capturedTools = await captureToolDefinitionsFromDir(candidateDir, pi);
+			if (capturedTools.size > 0) {
+				break;
+			}
+		}
+
+		if (capturedTools.size === 0) {
+			continue;
+		}
+
+		for (const [originalName, aliasName] of companionExtension.toolAliases) {
+			if (registeredAliasNames.has(aliasName)) {
+				continue;
+			}
+			const definition = capturedTools.get(originalName);
+			if (!definition) {
+				continue;
+			}
+			pi.registerTool(cloneAliasedToolDefinition(definition, aliasName));
+			registeredAliasNames.add(aliasName);
+		}
+	}
+}
+
+function syncKnownAliasToolActivation(pi: ExtensionAPI, enableAliases: boolean): void {
+	const activeToolNames = pi.getActiveTools();
+	const allToolNames = new Set(pi.getAllTools().map((tool) => tool.name));
+	const knownAliasNames = Array.from(KNOWN_MONOREPO_TOOL_ALIASES.values()).filter((aliasName) =>
+		allToolNames.has(aliasName),
+	);
+	const activeOriginalToolNames = new Set(activeToolNames.map(normalizeToolName));
+	const aliasesForActiveTools = Array.from(KNOWN_MONOREPO_TOOL_ALIASES.entries())
+		.filter(([originalName, aliasName]) => activeOriginalToolNames.has(originalName) && allToolNames.has(aliasName))
+		.map(([, aliasName]) => aliasName);
+	const nextToolNames = enableAliases
+		? Array.from(new Set([...activeToolNames, ...aliasesForActiveTools]))
+		: activeToolNames.filter((toolName) => !knownAliasNames.includes(toolName));
+
+	if (
+		nextToolNames.length !== activeToolNames.length ||
+		nextToolNames.some((toolName, index) => toolName !== activeToolNames[index])
+	) {
+		pi.setActiveTools(nextToolNames);
+	}
 }
 
 function mapStainlessOs(): string {
@@ -609,7 +881,20 @@ function streamSimpleAnthropicClaudeCodeAware(
 	});
 }
 
-export default function piClaudeCodeUse(pi: ExtensionAPI): void {
+export default async function piClaudeCodeUse(pi: ExtensionAPI): Promise<void> {
+	await eagerRegisterKnownCompanionAliases(pi);
+
+	pi.on("session_start", async () => {
+		await registerKnownMonorepoToolAliases(pi);
+	});
+	pi.on("before_agent_start", async (_event, ctx) => {
+		await registerKnownMonorepoToolAliases(pi);
+		const model = ctx.model;
+		const enableAliases =
+			model?.provider === "anthropic" && model !== undefined && ctx.modelRegistry.isUsingOAuth(model);
+		syncKnownAliasToolActivation(pi, enableAliases);
+	});
+
 	pi.registerProvider("anthropic", {
 		api: "anthropic-messages",
 		streamSimple: streamSimpleAnthropicClaudeCodeAware,
@@ -628,7 +913,14 @@ export const _test = {
 	createClaudeCodeFetch,
 	getUserSystemBlocks,
 	isAnthropicSubscriptionAuthKey,
+	getClaudeCodeVisibleToolName,
+	getKnownAliasName,
+	isCoreClaudeCodeToolName,
+	isMcpToolName,
+	eagerRegisterKnownCompanionAliases,
 	patchSerializedAnthropicMessagesRequest,
+	syncKnownAliasToolActivation,
+	registerKnownMonorepoToolAliases,
 	rewritePiSelfReferences,
 	streamSimpleAnthropicClaudeCodeAware,
 	transformAnthropicOAuthPayload,

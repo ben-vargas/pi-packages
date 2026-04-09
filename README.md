@@ -15,7 +15,7 @@ Pi packages can include extensions, skills, prompt templates, and themes. See th
 | [@benvargas/pi-ancestor-discovery](./packages/pi-ancestor-discovery/) | Extension | Ancestor discovery for skills, prompts, themes |
 | [@benvargas/pi-cut-stack](./packages/pi-cut-stack/) | Extension | Cut-stack editor shortcuts |
 | [@benvargas/pi-openai-fast](./packages/pi-openai-fast/) | Extension | `/fast` toggle for OpenAI priority service tier on supported GPT-5.4 models |
-| [@benvargas/pi-claude-code-use](./packages/pi-claude-code-use/) | Extension | Patch Anthropic provider with OAuth to Claude Code shape |
+| [@benvargas/pi-claude-code-use](./packages/pi-claude-code-use/) | Extension | Patch Anthropic provider with OAuth to Claude Code shape + MCP companion tool aliases |
 
 Each package has its own README with setup instructions, usage, and configuration details.
 

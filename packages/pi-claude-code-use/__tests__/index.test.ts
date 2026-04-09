@@ -3,20 +3,67 @@ import { describe, expect, it, vi } from "vitest";
 import piClaudeCodeUse, { _test } from "../extensions/index.js";
 
 type MockPi = {
+	events: ExtensionAPI["events"];
+	exec: ReturnType<typeof vi.fn>;
+	getActiveTools: ReturnType<typeof vi.fn>;
+	getAllTools: ReturnType<typeof vi.fn>;
+	getCommands: ReturnType<typeof vi.fn>;
+	getFlag: ReturnType<typeof vi.fn>;
+	getSessionName: ReturnType<typeof vi.fn>;
+	getThinkingLevel: ReturnType<typeof vi.fn>;
+	on: ReturnType<typeof vi.fn>;
+	setActiveTools: ReturnType<typeof vi.fn>;
+	setLabel: ReturnType<typeof vi.fn>;
+	setModel: ReturnType<typeof vi.fn>;
+	setSessionName: ReturnType<typeof vi.fn>;
+	setThinkingLevel: ReturnType<typeof vi.fn>;
+	appendEntry: ReturnType<typeof vi.fn>;
+	registerCommand: ReturnType<typeof vi.fn>;
+	registerFlag: ReturnType<typeof vi.fn>;
+	registerMessageRenderer: ReturnType<typeof vi.fn>;
+	registerTool: ReturnType<typeof vi.fn>;
 	registerProvider: ReturnType<typeof vi.fn>;
+	registerShortcut: ReturnType<typeof vi.fn>;
+	sendMessage: ReturnType<typeof vi.fn>;
+	sendUserMessage: ReturnType<typeof vi.fn>;
+	unregisterProvider: ReturnType<typeof vi.fn>;
 };
 
 function createMockPi(): MockPi {
 	return {
+		appendEntry: vi.fn(),
+		events: {} as ExtensionAPI["events"],
+		exec: vi.fn(),
+		getActiveTools: vi.fn(() => []),
+		getAllTools: vi.fn(() => []),
+		getCommands: vi.fn(() => []),
+		getFlag: vi.fn(() => undefined),
+		getSessionName: vi.fn(() => undefined),
+		getThinkingLevel: vi.fn(() => "medium"),
+		on: vi.fn(),
+		registerCommand: vi.fn(),
+		registerFlag: vi.fn(),
+		registerMessageRenderer: vi.fn(),
+		registerTool: vi.fn(),
 		registerProvider: vi.fn(),
+		registerShortcut: vi.fn(),
+		sendMessage: vi.fn(),
+		sendUserMessage: vi.fn(),
+		setActiveTools: vi.fn(),
+		setLabel: vi.fn(),
+		setModel: vi.fn(async () => true),
+		setSessionName: vi.fn(),
+		setThinkingLevel: vi.fn(),
+		unregisterProvider: vi.fn(),
 	};
 }
 
 describe("pi-claude-code-use", () => {
-	it("registers an anthropic provider override without redefining models", () => {
+	it("registers an anthropic provider override without redefining models", async () => {
 		const mockPi = createMockPi();
-		piClaudeCodeUse(mockPi as unknown as ExtensionAPI);
+		await piClaudeCodeUse(mockPi as unknown as ExtensionAPI);
 
+		expect(mockPi.on).toHaveBeenCalledWith("session_start", expect.any(Function));
 		expect(mockPi.registerProvider).toHaveBeenCalledTimes(1);
 		expect(mockPi.registerProvider).toHaveBeenCalledWith(
 			"anthropic",
@@ -58,6 +105,12 @@ describe("pi-claude-code-use", () => {
 				{ name: "Read", description: "Read files", input_schema: { type: "object", properties: {} } },
 				{ type: "web_search", name: "web_search", search_context_size: "high" },
 				{ name: "web_search_exa", description: "Search web", input_schema: { type: "object", properties: {} } },
+				{
+					name: "mcp__custom__lookup",
+					description: "Already MCP-shaped",
+					input_schema: { type: "object", properties: {} },
+				},
+				{ name: "totally_unknown_tool", description: "Unknown", input_schema: { type: "object", properties: {} } },
 			],
 		});
 
@@ -82,7 +135,41 @@ describe("pi-claude-code-use", () => {
 		);
 		expect(transformed.system[2]?.cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
 		expect(transformed.messages[0]?.content[0]?.text).toBe("Fix the bug.");
-		expect(transformed.tools?.map((tool) => tool.name ?? tool.type)).toEqual(["Read", "web_search"]);
+		expect(transformed.tools?.map((tool) => tool.name ?? tool.type)).toEqual([
+			"Read",
+			"web_search",
+			"mcp__exa__web_search",
+			"mcp__custom__lookup",
+		]);
+	});
+
+	it("maps known monorepo tools to MCP aliases and preserves existing MCP names", () => {
+		expect(_test.getClaudeCodeVisibleToolName("web_search_exa")).toBe("mcp__exa__web_search");
+		expect(_test.getClaudeCodeVisibleToolName("get_code_context_exa")).toBe("mcp__exa__get_code_context");
+		expect(_test.getClaudeCodeVisibleToolName("firecrawl_scrape")).toBe("mcp__firecrawl__scrape");
+		expect(_test.getClaudeCodeVisibleToolName("mcp__custom__lookup")).toBe("mcp__custom__lookup");
+		expect(_test.getClaudeCodeVisibleToolName("Read")).toBe("Read");
+		expect(_test.getClaudeCodeVisibleToolName("totally_unknown_tool")).toBeUndefined();
+	});
+
+	it("deduplicates tool names after alias remapping", () => {
+		const serialized = JSON.stringify({
+			system: [{ type: "text", text: "Pi documentation (read only when the user asks about pi itself):" }],
+			messages: [{ role: "user", content: "Search now." }],
+			tools: [
+				{ name: "web_search_exa", description: "Original", input_schema: { type: "object", properties: {} } },
+				{
+					name: "mcp__exa__web_search",
+					description: "Alias",
+					input_schema: { type: "object", properties: {} },
+				},
+			],
+		});
+
+		const patched = _test.patchSerializedAnthropicMessagesRequest(serialized, "sk-ant-oat-test");
+		const transformed = JSON.parse(patched ?? "{}") as { tools?: Array<{ name?: string }> };
+
+		expect(transformed.tools?.map((tool) => tool.name)).toEqual(["mcp__exa__web_search"]);
 	});
 
 	it("applies Claude Code headers to outgoing requests", () => {
