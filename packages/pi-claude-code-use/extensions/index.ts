@@ -1,6 +1,10 @@
 import { appendFileSync } from "node:fs";
+import { basename, dirname } from "node:path";
 import { createJiti } from "@mariozechner/jiti";
+import * as bundledPiAi from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import * as bundledPiCodingAgent from "@mariozechner/pi-coding-agent";
+import * as bundledTypebox from "@sinclair/typebox";
 
 type CacheControl = {
 	type: "ephemeral";
@@ -15,6 +19,11 @@ type TextBlock = {
 };
 
 type AnthropicPayload = {
+	messages?: Array<{
+		role?: string;
+		content?: string | unknown[];
+		[key: string]: unknown;
+	}>;
 	tool_choice?: {
 		type?: string;
 		name?: string;
@@ -29,16 +38,20 @@ type AnthropicPayload = {
 	[key: string]: unknown;
 };
 
+type AnthropicTransformOptions = {
+	disableToolFiltering?: boolean;
+};
+
 type ToolInfo = ReturnType<ExtensionAPI["getAllTools"]>[number];
 type RegisteredToolDefinition = Parameters<ExtensionAPI["registerTool"]>[0];
 type ExtensionFactory = (pi: ExtensionAPI) => void | Promise<void>;
 type KnownCompanionExtension = {
 	baseDirName: string;
+	packageName: string;
 	toolAliases: Array<readonly [originalName: string, aliasName: string]>;
 };
 
 const debugLogPath = process.env.PI_CLAUDE_CODE_USE_DEBUG_LOG;
-const disableToolFiltering = process.env.PI_CLAUDE_CODE_USE_DISABLE_TOOL_FILTER === "1";
 
 // Mirror Pi core's Anthropic Claude Code tool set from:
 // packages/ai/src/providers/anthropic.ts -> claudeCodeTools
@@ -77,6 +90,7 @@ const KNOWN_MONOREPO_TOOL_ALIASES = new Map<string, string>([
 const KNOWN_COMPANION_EXTENSIONS: KnownCompanionExtension[] = [
 	{
 		baseDirName: "pi-exa-mcp",
+		packageName: "@benvargas/pi-exa-mcp",
 		toolAliases: [
 			["web_search_exa", "mcp__exa__web_search"],
 			["get_code_context_exa", "mcp__exa__get_code_context"],
@@ -84,6 +98,7 @@ const KNOWN_COMPANION_EXTENSIONS: KnownCompanionExtension[] = [
 	},
 	{
 		baseDirName: "pi-firecrawl",
+		packageName: "@benvargas/pi-firecrawl",
 		toolAliases: [
 			["firecrawl_scrape", "mcp__firecrawl__scrape"],
 			["firecrawl_map", "mcp__firecrawl__map"],
@@ -92,6 +107,7 @@ const KNOWN_COMPANION_EXTENSIONS: KnownCompanionExtension[] = [
 	},
 	{
 		baseDirName: "pi-antigravity-image-gen",
+		packageName: "@benvargas/pi-antigravity-image-gen",
 		toolAliases: [
 			["generate_image", "mcp__antigravity__generate_image"],
 			["image_quota", "mcp__antigravity__image_quota"],
@@ -99,13 +115,25 @@ const KNOWN_COMPANION_EXTENSIONS: KnownCompanionExtension[] = [
 	},
 ];
 
+const KNOWN_COMPANION_EXTENSION_BY_TOOL_NAME = new Map<string, KnownCompanionExtension>(
+	KNOWN_COMPANION_EXTENSIONS.flatMap((companionExtension) =>
+		companionExtension.toolAliases.map(([originalName]) => [originalName, companionExtension] as const),
+	),
+);
+
 const capturedToolDefinitionsByExtensionDir = new Map<string, Promise<Map<string, RegisteredToolDefinition>>>();
 const registeredAliasNames = new Set<string>();
+const autoActivatedAliasNames = new Set<string>();
+let lastAutoManagedToolNames: string[] | undefined;
 let extensionImportLoader:
 	| {
 			import(path: string, options?: { default?: boolean }): Promise<unknown>;
 	  }
 	| undefined;
+
+function isToolFilteringDisabled(options?: AnthropicTransformOptions): boolean {
+	return options?.disableToolFiltering ?? process.env.PI_CLAUDE_CODE_USE_DISABLE_TOOL_FILTER === "1";
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -140,6 +168,57 @@ function getAdvertisedToolNames(tools: AnthropicPayload["tools"]): Set<string> {
 			.map((tool) => (typeof tool?.name === "string" ? normalizeToolName(tool.name) : ""))
 			.filter((name) => name.length > 0),
 	);
+}
+
+function rewriteAnthropicToolChoice(
+	toolChoice: AnthropicPayload["tool_choice"],
+	advertisedToolNames: Set<string>,
+	disableFiltering: boolean,
+): AnthropicPayload["tool_choice"] {
+	if (toolChoice?.type !== "tool" || typeof toolChoice.name !== "string") {
+		return toolChoice;
+	}
+
+	const visibleToolName = getClaudeCodeVisibleToolName(toolChoice.name, advertisedToolNames);
+	if (visibleToolName) {
+		return visibleToolName === toolChoice.name ? toolChoice : { ...toolChoice, name: visibleToolName };
+	}
+	if (disableFiltering) {
+		return toolChoice;
+	}
+	return undefined;
+}
+
+function rewriteHistoricalToolUseBlocks(
+	messages: AnthropicPayload["messages"],
+	advertisedToolNames: Set<string>,
+): AnthropicPayload["messages"] {
+	if (!Array.isArray(messages)) {
+		return messages;
+	}
+
+	return messages.map((message) => {
+		if (!Array.isArray(message?.content)) {
+			return message;
+		}
+
+		let changed = false;
+		const content = message.content.map((block) => {
+			if (!isRecord(block) || block.type !== "tool_use" || typeof block.name !== "string") {
+				return block;
+			}
+
+			const visibleToolName = getClaudeCodeVisibleToolName(block.name, advertisedToolNames);
+			if (!visibleToolName || visibleToolName === block.name) {
+				return block;
+			}
+
+			changed = true;
+			return { ...block, name: visibleToolName };
+		});
+
+		return changed ? { ...message, content } : message;
+	});
 }
 
 function clonePayload(payload: AnthropicPayload): AnthropicPayload {
@@ -188,49 +267,58 @@ function getClaudeCodeVisibleToolName(
 	return aliasName;
 }
 
-function filterToolsForClaudeCode(payload: AnthropicPayload): AnthropicPayload {
-	if (disableToolFiltering || !Array.isArray(payload.tools)) {
-		return payload;
-	}
-
+function filterToolsForClaudeCode(payload: AnthropicPayload, options?: AnthropicTransformOptions): AnthropicPayload {
+	const disableFiltering = isToolFilteringDisabled(options);
 	const advertisedToolNames = getAdvertisedToolNames(payload.tools);
-	const seenToolNames = new Set<string>();
-	const tools = payload.tools.flatMap((tool) => {
-		if (typeof tool?.type === "string" && tool.type.trim().length > 0) {
-			return [tool];
-		}
+	let tools = payload.tools;
 
-		const visibleName = getClaudeCodeVisibleToolName(
-			typeof tool?.name === "string" ? tool.name : undefined,
-			advertisedToolNames,
-		);
-		const normalizedVisibleName = normalizeToolName(visibleName);
-		if (!visibleName || seenToolNames.has(normalizedVisibleName)) {
-			return [];
-		}
+	if (Array.isArray(payload.tools)) {
+		const seenToolNames = new Set<string>();
+		tools = payload.tools.flatMap((tool) => {
+			if (typeof tool?.type === "string" && tool.type.trim().length > 0) {
+				return [tool];
+			}
 
-		seenToolNames.add(normalizedVisibleName);
-		return [{ ...tool, name: visibleName }];
-	});
+			const originalName = typeof tool?.name === "string" ? tool.name : undefined;
+			const visibleName = getClaudeCodeVisibleToolName(originalName, advertisedToolNames);
+			const nextName = visibleName ?? (disableFiltering ? originalName : undefined);
+			const normalizedNextName = normalizeToolName(nextName);
+			if (!nextName || seenToolNames.has(normalizedNextName)) {
+				return [];
+			}
 
-	let toolChoice = payload.tool_choice;
-	if (toolChoice?.type === "tool" && typeof toolChoice.name === "string") {
-		const visibleToolName = getClaudeCodeVisibleToolName(toolChoice.name, advertisedToolNames);
-		toolChoice = visibleToolName ? { ...toolChoice, name: visibleToolName } : undefined;
+			seenToolNames.add(normalizedNextName);
+			return [nextName === originalName ? tool : { ...tool, name: nextName }];
+		});
 	}
+
+	const rewrittenToolChoice = rewriteAnthropicToolChoice(
+		payload.tool_choice,
+		getAdvertisedToolNames(tools),
+		disableFiltering,
+	);
 
 	return {
 		...payload,
-		tools,
-		...(toolChoice ? { tool_choice: toolChoice } : {}),
-		...(toolChoice ? {} : { tool_choice: undefined }),
+		...(tools ? { tools } : {}),
+		...(rewrittenToolChoice ? { tool_choice: rewrittenToolChoice } : {}),
+		...(rewrittenToolChoice ? {} : { tool_choice: undefined }),
 	};
 }
 
-function transformAnthropicOAuthPayload(payload: AnthropicPayload): AnthropicPayload {
-	const nextPayload = filterToolsForClaudeCode(clonePayload(payload));
+function transformAnthropicOAuthPayload(
+	payload: AnthropicPayload,
+	options?: AnthropicTransformOptions,
+): AnthropicPayload {
+	const nextPayload = filterToolsForClaudeCode(clonePayload(payload), options);
 	if (nextPayload.system !== undefined) {
 		nextPayload.system = rewriteSystemBlocks(nextPayload.system);
+	}
+	if (nextPayload.messages !== undefined) {
+		nextPayload.messages = rewriteHistoricalToolUseBlocks(
+			nextPayload.messages,
+			getAdvertisedToolNames(nextPayload.tools),
+		);
 	}
 	return nextPayload;
 }
@@ -246,28 +334,56 @@ function debugLogPayload(payload: unknown): void {
 }
 
 async function importExtensionFactoryFromDir(baseDir: string): Promise<ExtensionFactory | undefined> {
-	const candidates = [`${baseDir.replace(/\/$/, "")}/index.ts`, `${baseDir.replace(/\/$/, "")}/index.js`];
+	const normalizedBaseDir = baseDir.replace(/\/$/, "");
+	const candidates = [
+		`${normalizedBaseDir}/index.ts`,
+		`${normalizedBaseDir}/index.js`,
+		`${normalizedBaseDir}/extensions/index.ts`,
+		`${normalizedBaseDir}/extensions/index.js`,
+	];
 
 	if (!extensionImportLoader) {
 		extensionImportLoader = createJiti(import.meta.url, {
 			moduleCache: false,
-			alias: {
-				"@mariozechner/pi-coding-agent": import.meta.resolve("@mariozechner/pi-coding-agent"),
-				"@mariozechner/pi-ai": import.meta.resolve("@mariozechner/pi-ai"),
-				"@mariozechner/pi-ai/oauth": import.meta.resolve("@mariozechner/pi-ai/oauth"),
-				"@sinclair/typebox": import.meta.resolve("@sinclair/typebox"),
+			tryNative: false,
+			virtualModules: {
+				"@mariozechner/pi-ai": bundledPiAi,
+				"@mariozechner/pi-coding-agent": bundledPiCodingAgent,
+				"@sinclair/typebox": bundledTypebox,
 			},
 		});
 	}
 
 	for (const candidate of candidates) {
 		try {
-			const module = (await extensionImportLoader.import(candidate, { default: true })) as { default?: unknown };
-			return typeof module.default === "function" ? (module.default as ExtensionFactory) : undefined;
+			const factory = await extensionImportLoader.import(candidate, { default: true });
+			return typeof factory === "function" ? (factory as ExtensionFactory) : undefined;
 		} catch {}
 	}
 
 	return undefined;
+}
+
+function matchesCompanionExtensionSource(
+	tool: ToolInfo | undefined,
+	companionExtension: KnownCompanionExtension,
+): boolean {
+	const baseDir = tool?.sourceInfo?.baseDir;
+	if (!baseDir) {
+		return false;
+	}
+
+	const baseName = basename(baseDir);
+	if (baseName === companionExtension.baseDirName) {
+		return true;
+	}
+
+	if (baseName === "extensions" && basename(dirname(baseDir)) === companionExtension.baseDirName) {
+		return true;
+	}
+
+	const packagePath = tool?.sourceInfo?.path;
+	return typeof packagePath === "string" && packagePath.includes(companionExtension.packageName);
 }
 
 function createCapturePi(realPi: ExtensionAPI, capturedTools: Map<string, RegisteredToolDefinition>): ExtensionAPI {
@@ -370,8 +486,14 @@ async function registerKnownMonorepoToolAliases(pi: ExtensionAPI): Promise<void>
 		}
 
 		const originalTool = toolsByName.get(originalName);
+		const companionExtension = KNOWN_COMPANION_EXTENSION_BY_TOOL_NAME.get(originalName);
 		const baseDir = originalTool?.sourceInfo?.baseDir;
-		if (!originalTool || !baseDir) {
+		if (
+			!originalTool ||
+			!baseDir ||
+			!companionExtension ||
+			!matchesCompanionExtensionSource(originalTool, companionExtension)
+		) {
 			return;
 		}
 
@@ -401,7 +523,7 @@ async function eagerRegisterKnownCompanionAliases(pi: ExtensionAPI): Promise<voi
 		const pendingAliases = companionExtension.toolAliases.filter(([originalName, aliasName]) => {
 			const normalizedAliasName = normalizeToolName(aliasName);
 			const originalTool = toolsByName.get(originalName);
-			if (!originalTool?.sourceInfo?.baseDir) {
+			if (!matchesCompanionExtensionSource(originalTool, companionExtension)) {
 				return false;
 			}
 			return !registeredAliasNames.has(aliasName) && !availableToolNames.has(normalizedAliasName);
@@ -434,6 +556,16 @@ function syncKnownAliasToolActivation(pi: ExtensionAPI, enableAliases: boolean):
 	const activeToolNames = pi.getActiveTools();
 	const allToolNames = new Set(pi.getAllTools().map((tool) => tool.name));
 	const activeOriginalToolNames = new Set(activeToolNames.map(normalizeToolName));
+	const selectionMatchesLastAutoManagedState =
+		lastAutoManagedToolNames !== undefined &&
+		lastAutoManagedToolNames.length === activeToolNames.length &&
+		lastAutoManagedToolNames.every((toolName, index) => toolName === activeToolNames[index]);
+	const activeAliasToolNames = activeToolNames.filter(
+		(toolName) => registeredAliasNames.has(toolName) && allToolNames.has(toolName),
+	);
+	const preservedUserAliasToolNames = activeAliasToolNames.filter(
+		(toolName) => !autoActivatedAliasNames.has(toolName) || !selectionMatchesLastAutoManagedState,
+	);
 	const aliasesForActiveTools = Array.from(KNOWN_MONOREPO_TOOL_ALIASES.entries())
 		.filter(([originalName, aliasName]) => activeOriginalToolNames.has(originalName) && allToolNames.has(aliasName))
 		.map(([, aliasName]) => aliasName);
@@ -441,16 +573,29 @@ function syncKnownAliasToolActivation(pi: ExtensionAPI, enableAliases: boolean):
 		? Array.from(
 				new Set([
 					...activeToolNames.filter((toolName) => !registeredAliasNames.has(toolName)),
+					...preservedUserAliasToolNames,
 					...aliasesForActiveTools,
 				]),
 			)
 		: activeToolNames.filter((toolName) => !registeredAliasNames.has(toolName));
+
+	autoActivatedAliasNames.clear();
+	if (enableAliases) {
+		for (const aliasName of aliasesForActiveTools) {
+			if (!preservedUserAliasToolNames.includes(aliasName)) {
+				autoActivatedAliasNames.add(aliasName);
+			}
+		}
+	}
 
 	if (
 		nextToolNames.length !== activeToolNames.length ||
 		nextToolNames.some((toolName, index) => toolName !== activeToolNames[index])
 	) {
 		pi.setActiveTools(nextToolNames);
+		lastAutoManagedToolNames = [...nextToolNames];
+	} else if (!enableAliases) {
+		lastAutoManagedToolNames = undefined;
 	}
 }
 
@@ -492,7 +637,15 @@ export const _test = {
 	getKnownAliasName,
 	isCoreClaudeCodeToolName,
 	isMcpToolName,
+	matchesCompanionExtensionSource,
 	registerKnownMonorepoToolAliases,
+	autoActivatedAliasNames,
+	getLastAutoManagedToolNames() {
+		return lastAutoManagedToolNames;
+	},
+	setLastAutoManagedToolNames(value: string[] | undefined) {
+		lastAutoManagedToolNames = value;
+	},
 	registeredAliasNames,
 	rewritePiSelfReferences,
 	syncKnownAliasToolActivation,

@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import piClaudeCodeUse, { _test } from "../extensions/index.js";
@@ -60,6 +63,8 @@ function createMockPi(): MockPi {
 
 describe("pi-claude-code-use", () => {
 	beforeEach(() => {
+		_test.autoActivatedAliasNames.clear();
+		_test.setLastAutoManagedToolNames(undefined);
 		_test.registeredAliasNames.clear();
 	});
 
@@ -231,6 +236,98 @@ describe("pi-claude-code-use", () => {
 		expect(transformed.tools?.map((tool) => tool.name)).toEqual(["mcp__exa__web_search"]);
 	});
 
+	it("rewrites legacy tool_use names in prior assistant messages when the alias is advertised", () => {
+		const transformed = _test.transformAnthropicOAuthPayload({
+			messages: [
+				{
+					role: "assistant",
+					content: [
+						{ type: "text", text: "Searching..." },
+						{ type: "tool_use", id: "toolu_123", name: "web_search_exa", input: { q: "pi" } },
+					],
+				},
+				{
+					role: "user",
+					content: [{ type: "tool_result", tool_use_id: "toolu_123", content: "done" }],
+				},
+			],
+			tools: [
+				{ name: "web_search_exa", description: "Original", input_schema: { type: "object", properties: {} } },
+				{
+					name: "mcp__exa__web_search",
+					description: "Alias",
+					input_schema: { type: "object", properties: {} },
+				},
+			],
+		});
+
+		expect(transformed.messages).toEqual([
+			{
+				role: "assistant",
+				content: [
+					{ type: "text", text: "Searching..." },
+					{ type: "tool_use", id: "toolu_123", name: "mcp__exa__web_search", input: { q: "pi" } },
+				],
+			},
+			{
+				role: "user",
+				content: [{ type: "tool_result", tool_use_id: "toolu_123", content: "done" }],
+			},
+		]);
+	});
+
+	it("preserves prior tool_use names when no advertised MCP alias exists", () => {
+		const transformed = _test.transformAnthropicOAuthPayload({
+			messages: [
+				{
+					role: "assistant",
+					content: [{ type: "tool_use", id: "toolu_123", name: "web_search_exa", input: { q: "pi" } }],
+				},
+			],
+			tools: [{ name: "web_search_exa", description: "Original", input_schema: { type: "object", properties: {} } }],
+		});
+
+		expect(transformed.messages).toEqual([
+			{
+				role: "assistant",
+				content: [{ type: "tool_use", id: "toolu_123", name: "web_search_exa", input: { q: "pi" } }],
+			},
+		]);
+	});
+
+	it("keeps alias remapping and deduplication active when tool filtering is disabled", () => {
+		const transformed = _test.transformAnthropicOAuthPayload(
+			{
+				messages: [
+					{
+						role: "assistant",
+						content: [{ type: "tool_use", id: "toolu_123", name: "web_search_exa", input: { q: "pi" } }],
+					},
+				],
+				tool_choice: { type: "tool", name: "web_search_exa" },
+				tools: [
+					{ name: "web_search_exa", description: "Original", input_schema: { type: "object", properties: {} } },
+					{
+						name: "mcp__exa__web_search",
+						description: "Alias",
+						input_schema: { type: "object", properties: {} },
+					},
+					{ name: "totally_unknown_tool", description: "Unknown", input_schema: { type: "object", properties: {} } },
+				],
+			},
+			{ disableToolFiltering: true },
+		);
+
+		expect(transformed.tools?.map((tool) => tool.name)).toEqual(["mcp__exa__web_search", "totally_unknown_tool"]);
+		expect(transformed.tool_choice).toEqual({ type: "tool", name: "mcp__exa__web_search" });
+		expect(transformed.messages).toEqual([
+			{
+				role: "assistant",
+				content: [{ type: "tool_use", id: "toolu_123", name: "mcp__exa__web_search", input: { q: "pi" } }],
+			},
+		]);
+	});
+
 	it("adds extension-registered MCP aliases and removes only those aliases when disabling", () => {
 		const mockPi = createMockPi();
 		mockPi.getAllTools.mockReturnValue([
@@ -265,6 +362,8 @@ describe("pi-claude-code-use", () => {
 	it("prunes stale extension-registered aliases when enabling aliases", () => {
 		const mockPi = createMockPi();
 		_test.registeredAliasNames.add("mcp__exa__web_search");
+		_test.autoActivatedAliasNames.add("mcp__exa__web_search");
+		_test.setLastAutoManagedToolNames(["read", "mcp__exa__web_search"]);
 		mockPi.getAllTools.mockReturnValue([
 			{ name: "web_search_exa", sourceInfo: {} },
 			{ name: "mcp__exa__web_search", sourceInfo: {} },
@@ -274,6 +373,19 @@ describe("pi-claude-code-use", () => {
 		_test.syncKnownAliasToolActivation(mockPi as unknown as ExtensionAPI, true);
 
 		expect(mockPi.setActiveTools).toHaveBeenCalledWith(["read"]);
+	});
+
+	it("preserves extension-registered aliases users enabled directly", () => {
+		const mockPi = createMockPi();
+		_test.registeredAliasNames.add("mcp__exa__web_search");
+		_test.autoActivatedAliasNames.add("mcp__exa__web_search");
+		_test.setLastAutoManagedToolNames(["read", "web_search_exa", "mcp__exa__web_search"]);
+		mockPi.getAllTools.mockReturnValue([{ name: "mcp__exa__web_search", sourceInfo: {} }]);
+		mockPi.getActiveTools.mockReturnValue(["read", "mcp__exa__web_search"]);
+
+		_test.syncKnownAliasToolActivation(mockPi as unknown as ExtensionAPI, true);
+
+		expect(mockPi.setActiveTools).not.toHaveBeenCalled();
 	});
 
 	it("capture shim preserves companion flag access after flag registration", () => {
@@ -296,5 +408,126 @@ describe("pi-claude-code-use", () => {
 		capturePi.registerFlag("--exa-mcp-tools", { description: "tools", type: "string" });
 		expect(mockPi.registerFlag).toHaveBeenCalledWith("--exa-mcp-tools", { description: "tools", type: "string" });
 		expect(capturePi.getFlag("--exa-mcp-tools")).toBe("web_search_exa");
+	});
+
+	it("recognizes companion package sources from package root and extensions dir layouts", () => {
+		expect(
+			_test.matchesCompanionExtensionSource(
+				{
+					name: "web_search_exa",
+					sourceInfo: {
+						baseDir: "/tmp/node_modules/@benvargas/pi-exa-mcp",
+						path: "/tmp/node_modules/@benvargas/pi-exa-mcp/extensions/index.ts",
+					},
+				} as never,
+				{
+					baseDirName: "pi-exa-mcp",
+					packageName: "@benvargas/pi-exa-mcp",
+					toolAliases: [],
+				},
+			),
+		).toBe(true);
+
+		expect(
+			_test.matchesCompanionExtensionSource(
+				{
+					name: "web_search_exa",
+					sourceInfo: {
+						baseDir: "/tmp/worktree/packages/pi-exa-mcp/extensions",
+						path: "/tmp/worktree/packages/pi-exa-mcp/extensions/index.ts",
+					},
+				} as never,
+				{
+					baseDirName: "pi-exa-mcp",
+					packageName: "@benvargas/pi-exa-mcp",
+					toolAliases: [],
+				},
+			),
+		).toBe(true);
+	});
+
+	it("does not treat unrelated tools with matching names as companion aliases", () => {
+		expect(
+			_test.matchesCompanionExtensionSource(
+				{
+					name: "generate_image",
+					sourceInfo: {
+						baseDir: "/tmp/node_modules/some-other-extension",
+						path: "/tmp/node_modules/some-other-extension/extensions/index.ts",
+					},
+				} as never,
+				{
+					baseDirName: "pi-antigravity-image-gen",
+					packageName: "@benvargas/pi-antigravity-image-gen",
+					toolAliases: [],
+				},
+			),
+		).toBe(false);
+	});
+
+	it("registers alias tools from companion package-root layouts", async () => {
+		const tempParent = mkdtempSync(join(tmpdir(), "pi-claude-code-use-"));
+		const tempRoot = join(tempParent, "pi-exa-mcp");
+		try {
+			const extensionsDir = join(tempRoot, "extensions");
+			mkdirSync(extensionsDir, { recursive: true });
+			writeFileSync(
+				join(extensionsDir, "index.js"),
+				[
+					'import { StringEnum } from "@mariozechner/pi-ai";',
+					'import { DEFAULT_MAX_BYTES } from "@mariozechner/pi-coding-agent";',
+					'import { Type } from "@sinclair/typebox";',
+					"const schema = Type.Object({ q: StringEnum(['web']) });",
+					"export default function companion(pi) {",
+					"  pi.registerTool({",
+					'    name: "web_search_exa",',
+					"    description: 'Search web ' + String(DEFAULT_MAX_BYTES),",
+					"    inputSchema: schema,",
+					"    async execute() { return { content: [{ type: 'text', text: String(DEFAULT_MAX_BYTES) }] }; }",
+					"  });",
+					"}",
+					"",
+				].join("\n"),
+				"utf8",
+			);
+
+			const mockPi = createMockPi();
+			mockPi.getAllTools.mockReturnValue([
+				{
+					name: "web_search_exa",
+					sourceInfo: {
+						baseDir: tempRoot,
+						path: join(tempRoot, "extensions", "index.js"),
+					},
+				},
+			]);
+
+			await _test.registerKnownMonorepoToolAliases(mockPi as unknown as ExtensionAPI);
+
+			expect(mockPi.registerTool).toHaveBeenCalledWith(
+				expect.objectContaining({
+					name: "mcp__exa__web_search",
+				}),
+			);
+		} finally {
+			rmSync(tempParent, { recursive: true, force: true });
+		}
+	});
+
+	it("does not alias unrelated matching tool names in non-eager registration", async () => {
+		const mockPi = createMockPi();
+		mockPi.getAllTools.mockReturnValue([
+			{
+				name: "generate_image",
+				sourceInfo: {
+					baseDir: "/tmp/node_modules/some-other-extension",
+					path: "/tmp/node_modules/some-other-extension/extensions/index.ts",
+				},
+			},
+		]);
+
+		await _test.registerKnownMonorepoToolAliases(mockPi as unknown as ExtensionAPI);
+
+		expect(mockPi.registerTool).not.toHaveBeenCalled();
 	});
 });
