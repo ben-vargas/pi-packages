@@ -578,6 +578,7 @@ describe("pi-claude-code-use", () => {
 
 	it("activates MCP aliases for active companion tools, then removes them on disable", () => {
 		const pi = createMockPi();
+		_test.registeredMcpAliases.add("mcp__exa__web_search");
 		pi.getAllTools.mockReturnValue([mockTool("web_search_exa"), mockTool("mcp__exa__web_search")]);
 		pi.getActiveTools.mockReturnValue(["read", "web_search_exa"]);
 
@@ -586,7 +587,6 @@ describe("pi-claude-code-use", () => {
 
 		// Now disable: should remove the alias
 		pi.setActiveTools.mockClear();
-		_test.registeredMcpAliases.add("mcp__exa__web_search");
 		pi.getActiveTools.mockReturnValue(["read", "web_search_exa", "mcp__exa__web_search"]);
 
 		_test.syncAliasActivation(pi as unknown as ExtensionAPI, false);
@@ -677,31 +677,44 @@ describe("pi-claude-code-use", () => {
 		expect(pi.setActiveTools).toHaveBeenCalledWith(["read"]);
 	});
 
+	it("does not auto-manage MCP aliases that were not registered by this extension", () => {
+		const pi = createMockPi();
+		// mcp__exa__web_search exists in allTools and activeTools, but is NOT in registeredMcpAliases
+		// (simulates a third-party extension providing this MCP tool directly)
+		pi.getAllTools.mockReturnValue([mockTool("web_search_exa"), mockTool("mcp__exa__web_search")]);
+		pi.getActiveTools.mockReturnValue(["read", "web_search_exa", "mcp__exa__web_search"]);
+
+		// Enable aliases: should NOT add mcp__exa__web_search to desiredAliases since it's not in registeredMcpAliases
+		_test.syncAliasActivation(pi as unknown as ExtensionAPI, true);
+
+		// Disable aliases: the third-party alias must remain untouched
+		pi.setActiveTools.mockClear();
+		pi.getActiveTools.mockReturnValue(["read", "web_search_exa", "mcp__exa__web_search"]);
+		_test.syncAliasActivation(pi as unknown as ExtensionAPI, false);
+
+		// mcp__exa__web_search was never auto-activated by us, so it must NOT be removed
+		expect(pi.setActiveTools).not.toHaveBeenCalled();
+	});
+
 	// ----------------------------------------------------------------
 	// Capture shim
 	// ----------------------------------------------------------------
 
-	it("forwards flag registration and gates flag access through the capture shim", () => {
-		const registeredFlags = new Set<string>();
+	it("does not forward flag registration to realPi and gates flag access through the capture shim", () => {
 		const pi = {
 			...createMockPi(),
-			registerFlag: vi.fn((name: string) => {
-				registeredFlags.add(name);
-			}),
-			getFlag: vi.fn((name: string) => {
-				return registeredFlags.has(name) ? "test-value" : undefined;
-			}),
+			getFlag: vi.fn((_name: string) => "test-value"),
 		};
 
 		const captured = new Map();
 		const shim = _test.buildCaptureShim(pi as unknown as ExtensionAPI, captured);
 
-		// Before registration, shim returns undefined
+		// Before registration, shim returns undefined (flag not tracked)
 		expect(shim.getFlag("--exa-mcp-tools")).toBeUndefined();
 
-		// After registration, shim forwards to real pi
+		// After registration, shim tracks in shimFlags and delegates getFlag to realPi
 		shim.registerFlag("--exa-mcp-tools", { description: "tools", type: "string" });
-		expect(pi.registerFlag).toHaveBeenCalledWith("--exa-mcp-tools", { description: "tools", type: "string" });
+		expect(pi.registerFlag).not.toHaveBeenCalled();
 		expect(shim.getFlag("--exa-mcp-tools")).toBe("test-value");
 
 		// Unregistered flags still return undefined through shim

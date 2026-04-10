@@ -393,9 +393,8 @@ function buildCaptureShim(realPi: ExtensionAPI, captured: Map<string, ToolRegist
 		registerTool(def) {
 			captured.set(def.name, def as unknown as ToolRegistration);
 		},
-		registerFlag(name, options) {
+		registerFlag(name, _options) {
 			shimFlags.add(name);
-			realPi.registerFlag(name, options);
 		},
 		getFlag(name) {
 			return shimFlags.has(name) ? realPi.getFlag(name) : undefined;
@@ -511,7 +510,7 @@ function syncAliasActivation(pi: ExtensionAPI, enableAliases: boolean): void {
 		const activeLc = new Set(activeNames.map(lower));
 		const desiredAliases: string[] = [];
 		for (const [flat, mcp] of FLAT_TO_MCP) {
-			if (activeLc.has(flat) && allNames.has(mcp)) {
+			if (activeLc.has(flat) && allNames.has(mcp) && registeredMcpAliases.has(mcp)) {
 				desiredAliases.push(mcp);
 			}
 		}
