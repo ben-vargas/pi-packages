@@ -166,6 +166,19 @@ describe("pi-claude-code-use", () => {
 		expect(_test.rewritePromptText("pi itself and pi itself again")).toBe("the cli itself and the cli itself again");
 	});
 
+	it("rewrites the additional Pi prompt tokens that trigger Anthropic filtering", () => {
+		const prompt =
+			"Pi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):\n" +
+			"- When asked about: custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md)\n" +
+			"- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)";
+
+		expect(_test.rewritePromptText(prompt)).toBe(
+			"Pi documentation (read only when the user asks about the cli itself, its SDK, extensions, themes, skills, or TUI):\n" +
+				"- When asked about: custom providers (docs/custom-provider.md), adding models (docs/models.md), cli packages (docs/packages.md)\n" +
+				"- Always read cli .md files completely and follow links to related docs (e.g., tui.md for TUI API details)",
+		);
+	});
+
 	// ----------------------------------------------------------------
 	// Tool filtering and MCP alias remapping (PRD §1.2)
 	// ----------------------------------------------------------------

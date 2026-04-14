@@ -8,7 +8,11 @@ It does not register a new provider or replace Pi's Anthropic request transport.
 
 When Pi is using Anthropic OAuth, this extension intercepts outbound API requests via the `before_provider_request` hook and:
 
-- **System prompt rewrite** -- replaces `pi itself` with `the cli itself` in system prompt text. Preserves Pi's original `system[]` structure, `cache_control` metadata, and non-text blocks.
+- **System prompt rewrite** -- rewrites a small set of Pi-identifying prompt phrases in system prompt text:
+  - `pi itself` → `the cli itself`
+  - `pi .md files` → `cli .md files`
+  - `pi packages` → `cli packages`
+  Preserves Pi's original `system[]` structure, `cache_control` metadata, and non-text blocks.
 - **Tool filtering** -- passes through core Claude Code tools, Anthropic-native typed tools (e.g. `web_search`), and any tool prefixed with `mcp__`. Unknown flat-named tools are filtered out.
 - **Companion tool remapping** -- renames known companion extension tools from their flat names to MCP-style aliases (e.g. `web_search_exa` becomes `mcp__exa__web_search`). Duplicate flat entries are removed after remapping.
 - **tool_choice remapping** -- if `tool_choice` references a flat companion name that was remapped, the reference is updated to the MCP alias. If it references a tool that was filtered out, `tool_choice` is removed from the payload.
