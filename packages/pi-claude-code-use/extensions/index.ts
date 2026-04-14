@@ -113,7 +113,10 @@ function lower(name: string | undefined): string {
 // ============================================================================
 
 function rewritePromptText(text: string): string {
-	return text.replaceAll("pi itself", "the cli itself");
+	return text
+		.replaceAll("pi itself", "the cli itself")
+		.replaceAll("pi .md files", "cli .md files")
+		.replaceAll("pi packages", "cli packages");
 }
 
 function rewriteSystemField(system: unknown): unknown {
