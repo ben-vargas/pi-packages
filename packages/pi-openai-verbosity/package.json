@@ -1,0 +1,41 @@
+{
+  "name": "@benvargas/pi-openai-verbosity",
+  "version": "1.0.0",
+  "description": "OpenAI text verbosity rewrites for pi - Sets low verbosity for configured OpenAI Codex models",
+  "keywords": [
+    "pi",
+    "pi-package",
+    "pi-extension",
+    "pi-coding-agent",
+    "openai",
+    "codex",
+    "gpt-5.5",
+    "verbosity",
+    "text-verbosity"
+  ],
+  "type": "module",
+  "files": [
+    "extensions/",
+    "README.md",
+    "LICENSE"
+  ],
+  "pi": {
+    "extensions": [
+      "./extensions/index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": ">=0.57.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ben-vargas/pi-packages.git",
+    "directory": "packages/pi-openai-verbosity"
+  },
+  "author": "Ben Vargas",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/ben-vargas/pi-packages/issues"
+  },
+  "homepage": "https://github.com/ben-vargas/pi-packages/tree/main/packages/pi-openai-verbosity#readme"
+}

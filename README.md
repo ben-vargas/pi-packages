@@ -15,6 +15,7 @@ Pi packages can include extensions, skills, prompt templates, and themes. See th
 | [@benvargas/pi-ancestor-discovery](./packages/pi-ancestor-discovery/) | Extension | Ancestor discovery for skills, prompts, themes |
 | [@benvargas/pi-cut-stack](./packages/pi-cut-stack/) | Extension | Cut-stack editor shortcuts |
 | [@benvargas/pi-openai-fast](./packages/pi-openai-fast/) | Extension | `/fast` toggle for OpenAI priority service tier on supported GPT-5.4 models |
+| [@benvargas/pi-openai-verbosity](./packages/pi-openai-verbosity/) | Extension | Config-backed OpenAI Codex text verbosity rewrites |
 | [@benvargas/pi-claude-code-use](./packages/pi-claude-code-use/) | Extension | Anthropic/Claude OAuth compatibility patching |
 
 Each package has its own README with setup instructions, usage, and configuration details.
@@ -56,6 +57,7 @@ pi install npm:@benvargas/pi-firecrawl
 pi install npm:@benvargas/pi-ancestor-discovery
 pi install npm:@benvargas/pi-cut-stack
 pi install npm:@benvargas/pi-openai-fast
+pi install npm:@benvargas/pi-openai-verbosity
 pi install npm:@benvargas/pi-claude-code-use
 ```
 
@@ -86,6 +88,7 @@ pi remove npm:@benvargas/pi-firecrawl
 pi remove npm:@benvargas/pi-ancestor-discovery
 pi remove npm:@benvargas/pi-cut-stack
 pi remove npm:@benvargas/pi-openai-fast
+pi remove npm:@benvargas/pi-openai-verbosity
 pi remove npm:@benvargas/pi-claude-code-use
 ```
 

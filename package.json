@@ -35,6 +35,7 @@
       "./packages/pi-ancestor-discovery/extensions/index.ts",
       "./packages/pi-cut-stack/extensions/index.ts",
       "./packages/pi-openai-fast/extensions/index.ts",
+      "./packages/pi-openai-verbosity/extensions/index.ts",
       "./packages/pi-claude-code-use/extensions/index.ts"
     ]
   },
