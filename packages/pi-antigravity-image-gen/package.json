@@ -1,13 +1,14 @@
 {
   "name": "@benvargas/pi-antigravity-image-gen",
   "version": "1.1.1",
-  "description": "Google Antigravity image generation tool for pi - Generate images via Gemini and Imagen models with inline terminal rendering",
+  "description": "Deprecated Google Antigravity image generation extension for pi",
   "keywords": [
     "pi",
     "pi-package",
     "pi-extension",
     "pi-coding-agent",
     "ai",
+    "deprecated",
     "image-generation",
     "antigravity",
     "gemini",
@@ -26,9 +27,7 @@
     ]
   },
   "peerDependencies": {
-    "@mariozechner/pi-coding-agent": "*",
-    "@mariozechner/pi-ai": "*",
-    "@sinclair/typebox": "*"
+    "@mariozechner/pi-coding-agent": "*"
   },
   "repository": {
     "type": "git",

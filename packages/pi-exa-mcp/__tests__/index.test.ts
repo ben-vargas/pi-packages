@@ -25,15 +25,16 @@ describe("pi-exa-mcp", () => {
 		const flagNames = mockPi.registerFlag.mock.calls.map(([name]) => name);
 		expect(flagNames).toEqual(
 			expect.arrayContaining([
-				"--exa-mcp-url",
-				"--exa-mcp-tools",
-				"--exa-mcp-api-key",
-				"--exa-mcp-timeout-ms",
-				"--exa-mcp-protocol",
-				"--exa-mcp-config",
-				"--exa-mcp-max-bytes",
-				"--exa-mcp-max-lines",
+				"exa-mcp-url",
+				"exa-mcp-tools",
+				"exa-mcp-api-key",
+				"exa-mcp-timeout-ms",
+				"exa-mcp-protocol",
+				"exa-mcp-config",
+				"exa-mcp-max-bytes",
+				"exa-mcp-max-lines",
 			]),
 		);
+		expect(flagNames.every((name) => !name.startsWith("--"))).toBe(true);
 	});
 });
