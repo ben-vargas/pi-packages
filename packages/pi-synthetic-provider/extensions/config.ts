@@ -10,8 +10,11 @@ export const SYNTHETIC_QUOTAS_ENDPOINT = "https://api.synthetic.new/v2/quotas";
 /** Shared compat flags for all Synthetic models (OpenAI-compatible API). */
 export const SYNTHETIC_COMPAT = {
 	supportsDeveloperRole: false,
+	supportsReasoningEffort: false,
+	supportsStrictMode: false,
 	supportsUsageInStreaming: false,
 	supportsStore: false,
+	maxTokensField: "max_tokens",
 	requiresToolResultName: true,
 } as const;
 

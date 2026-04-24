@@ -25,12 +25,14 @@
     ]
   },
   "dependencies": {
-    "@mariozechner/jiti": "^2.6.5",
-    "@mariozechner/pi-ai": "*",
-    "@sinclair/typebox": "*"
+    "@mariozechner/jiti": "^2.6.5"
   },
   "peerDependencies": {
-    "@mariozechner/pi-coding-agent": ">=0.57.0"
+    "@mariozechner/pi-agent-core": "*",
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*",
+    "typebox": "*"
   },
   "repository": {
     "type": "git",

@@ -206,7 +206,12 @@ describe("pi-claude-code-use", () => {
 			{
 				tools: [
 					{ name: "web_search_exa", description: "Flat", input_schema: {} },
-					{ name: "mcp__exa__web_search", description: "Alias", input_schema: {} },
+					{
+						name: "mcp__exa__web_search",
+						description: "Alias",
+						input_schema: {},
+						cache_control: { type: "ephemeral", ttl: "1h" },
+					},
 				],
 				messages: [],
 			},
@@ -214,6 +219,12 @@ describe("pi-claude-code-use", () => {
 		);
 
 		expect((result.tools as { name: string }[]).map((t) => t.name)).toEqual(["mcp__exa__web_search"]);
+		expect(result.tools).toEqual([
+			expect.objectContaining({
+				description: "Alias",
+				cache_control: { type: "ephemeral", ttl: "1h" },
+			}),
+		]);
 	});
 
 	it("filters companion tools when MCP alias is not in the tool list", () => {
@@ -723,15 +734,15 @@ describe("pi-claude-code-use", () => {
 		const shim = _test.buildCaptureShim(pi as unknown as ExtensionAPI, captured);
 
 		// Before registration, shim returns undefined (flag not tracked)
-		expect(shim.getFlag("--exa-mcp-tools")).toBeUndefined();
+		expect(shim.getFlag("exa-mcp-tools")).toBeUndefined();
 
 		// After registration, shim tracks in shimFlags and delegates getFlag to realPi
-		shim.registerFlag("--exa-mcp-tools", { description: "tools", type: "string" });
+		shim.registerFlag("exa-mcp-tools", { description: "tools", type: "string" });
 		expect(pi.registerFlag).not.toHaveBeenCalled();
-		expect(shim.getFlag("--exa-mcp-tools")).toBe("test-value");
+		expect(shim.getFlag("exa-mcp-tools")).toBe("test-value");
 
 		// Unregistered flags still return undefined through shim
-		expect(shim.getFlag("--other-flag")).toBeUndefined();
+		expect(shim.getFlag("other-flag")).toBeUndefined();
 	});
 
 	// ----------------------------------------------------------------
@@ -825,7 +836,7 @@ describe("pi-claude-code-use", () => {
 				[
 					'import { StringEnum } from "@mariozechner/pi-ai";',
 					'import { DEFAULT_MAX_BYTES } from "@mariozechner/pi-coding-agent";',
-					'import { Type } from "@sinclair/typebox";',
+					'import { Type } from "typebox";',
 					"const schema = Type.Object({ q: StringEnum(['web']) });",
 					"export default function companion(pi) {",
 					"  pi.registerTool({",

@@ -119,7 +119,7 @@ export function registerSyntheticModelsCommand(pi: ExtensionAPI): void {
 								`${theme.fg("muted", "Capabilities:")} ${caps.length > 0 ? caps.join(", ") : "none"}`,
 								`${theme.fg("muted", "Datacenters:")} ${datacenters}`,
 								"",
-								`${theme.fg("muted", "Use with:")} synthetic:${model.id}`,
+								`${theme.fg("muted", "Use with:")} synthetic/${model.id}`,
 							];
 							detailsText.setText(lines.join("\n"));
 						};
@@ -137,7 +137,7 @@ export function registerSyntheticModelsCommand(pi: ExtensionAPI): void {
 								const selected = itemToModel.get(item.value);
 								if (!selected) return;
 
-								const modelRef = `synthetic:${selected.id}`;
+								const modelRef = `synthetic/${selected.id}`;
 								const registryModel = ctx.modelRegistry.find("synthetic", selected.id);
 								if (!registryModel) {
 									ctx.ui.notify(

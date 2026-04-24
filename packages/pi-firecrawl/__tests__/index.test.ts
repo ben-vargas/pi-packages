@@ -60,14 +60,15 @@ describe("pi-firecrawl", () => {
 		const flagNames = mockPi.registerFlag.mock.calls.map(([name]) => name);
 		expect(flagNames).toEqual(
 			expect.arrayContaining([
-				"--firecrawl-url",
-				"--firecrawl-api-key",
-				"--firecrawl-timeout-ms",
-				"--firecrawl-config",
-				"--firecrawl-tools",
-				"--firecrawl-max-bytes",
-				"--firecrawl-max-lines",
+				"firecrawl-url",
+				"firecrawl-api-key",
+				"firecrawl-timeout-ms",
+				"firecrawl-config",
+				"firecrawl-tools",
+				"firecrawl-max-bytes",
+				"firecrawl-max-lines",
 			]),
 		);
+		expect(flagNames.every((name) => !name.startsWith("--"))).toBe(true);
 	});
 });

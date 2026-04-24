@@ -36,7 +36,7 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import { StringEnum } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, truncateHead } from "@mariozechner/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 
 // =============================================================================
 // Constants
@@ -714,64 +714,64 @@ export {
 
 export default function exaMcp(pi: ExtensionAPI) {
 	// Register CLI flags
-	pi.registerFlag("--exa-mcp-url", {
+	pi.registerFlag("exa-mcp-url", {
 		description: "Override the Exa MCP endpoint.",
 		type: "string",
 	});
-	pi.registerFlag("--exa-mcp-tools", {
+	pi.registerFlag("exa-mcp-tools", {
 		description: "Comma-separated MCP tool list (appended to URL if tools param missing).",
 		type: "string",
 	});
-	pi.registerFlag("--exa-mcp-api-key", {
+	pi.registerFlag("exa-mcp-api-key", {
 		description: "Exa API key (added as exaApiKey query param if missing).",
 		type: "string",
 	});
-	pi.registerFlag("--exa-mcp-timeout-ms", {
+	pi.registerFlag("exa-mcp-timeout-ms", {
 		description: "HTTP timeout for MCP requests (milliseconds).",
 		type: "string",
 	});
-	pi.registerFlag("--exa-mcp-protocol", {
+	pi.registerFlag("exa-mcp-protocol", {
 		description: "MCP protocol version for initialize() (default: 2025-06-18).",
 		type: "string",
 	});
-	pi.registerFlag("--exa-mcp-config", {
+	pi.registerFlag("exa-mcp-config", {
 		description: "Path to JSON config file (defaults to ~/.pi/agent/extensions/exa-mcp.json).",
 		type: "string",
 	});
-	pi.registerFlag("--exa-mcp-max-bytes", {
+	pi.registerFlag("exa-mcp-max-bytes", {
 		description: "Max bytes to keep from tool output (default: 51200).",
 		type: "string",
 	});
-	pi.registerFlag("--exa-mcp-max-lines", {
+	pi.registerFlag("exa-mcp-max-lines", {
 		description: "Max lines to keep from tool output (default: 2000).",
 		type: "string",
 	});
 
 	const getConfiguredTools = (): string[] | undefined => {
-		const toolsFlag = pi.getFlag("--exa-mcp-tools");
+		const toolsFlag = pi.getFlag("exa-mcp-tools");
 		if (typeof toolsFlag === "string") {
 			return normalizeTools(toolsFlag);
 		}
 		if (process.env.EXA_MCP_TOOLS) {
 			return normalizeTools(process.env.EXA_MCP_TOOLS);
 		}
-		const configFlag = pi.getFlag("--exa-mcp-config");
+		const configFlag = pi.getFlag("exa-mcp-config");
 		const config = loadConfig(typeof configFlag === "string" ? configFlag : undefined);
 		return config?.tools;
 	};
 
 	const getBaseUrl = (): string => {
-		const configFlag = pi.getFlag("--exa-mcp-config");
+		const configFlag = pi.getFlag("exa-mcp-config");
 		const config = loadConfig(typeof configFlag === "string" ? configFlag : undefined);
 
-		const urlFlag = pi.getFlag("--exa-mcp-url");
+		const urlFlag = pi.getFlag("exa-mcp-url");
 		return typeof urlFlag === "string" ? urlFlag : (process.env.EXA_MCP_URL ?? config?.url ?? DEFAULT_ENDPOINT);
 	};
 
 	const getMaxLimits = (): { maxBytes: number; maxLines: number } => {
-		const maxBytesFlag = pi.getFlag("--exa-mcp-max-bytes");
-		const maxLinesFlag = pi.getFlag("--exa-mcp-max-lines");
-		const configFlag = pi.getFlag("--exa-mcp-config");
+		const maxBytesFlag = pi.getFlag("exa-mcp-max-bytes");
+		const maxLinesFlag = pi.getFlag("exa-mcp-max-lines");
+		const configFlag = pi.getFlag("exa-mcp-config");
 		const config = loadConfig(typeof configFlag === "string" ? configFlag : undefined);
 
 		const maxBytes =
@@ -791,11 +791,11 @@ export default function exaMcp(pi: ExtensionAPI) {
 
 	const client = new ExaMcpClient(
 		() => {
-			const configFlag = pi.getFlag("--exa-mcp-config");
+			const configFlag = pi.getFlag("exa-mcp-config");
 			const config = loadConfig(typeof configFlag === "string" ? configFlag : undefined);
 
-			const urlFlag = pi.getFlag("--exa-mcp-url");
-			const apiKeyFlag = pi.getFlag("--exa-mcp-api-key");
+			const urlFlag = pi.getFlag("exa-mcp-url");
+			const apiKeyFlag = pi.getFlag("exa-mcp-api-key");
 
 			const baseUrl = typeof urlFlag === "string" ? urlFlag : getBaseUrl();
 			const apiKey =
@@ -806,17 +806,17 @@ export default function exaMcp(pi: ExtensionAPI) {
 			return resolveEndpoint(baseUrl, getConfiguredTools(), apiKey);
 		},
 		() => {
-			const configFlag = pi.getFlag("--exa-mcp-config");
+			const configFlag = pi.getFlag("exa-mcp-config");
 			const config = loadConfig(typeof configFlag === "string" ? configFlag : undefined);
-			const timeoutFlag = pi.getFlag("--exa-mcp-timeout-ms");
+			const timeoutFlag = pi.getFlag("exa-mcp-timeout-ms");
 			const timeoutValue =
 				typeof timeoutFlag === "string" ? timeoutFlag : (process.env.EXA_MCP_TIMEOUT_MS ?? config?.timeoutMs);
 			return parseTimeoutMs(timeoutValue, DEFAULT_TIMEOUT_MS);
 		},
 		() => {
-			const configFlag = pi.getFlag("--exa-mcp-config");
+			const configFlag = pi.getFlag("exa-mcp-config");
 			const config = loadConfig(typeof configFlag === "string" ? configFlag : undefined);
-			const protocolFlag = pi.getFlag("--exa-mcp-protocol");
+			const protocolFlag = pi.getFlag("exa-mcp-protocol");
 			if (typeof protocolFlag === "string" && protocolFlag.trim().length > 0) {
 				return protocolFlag.trim();
 			}
@@ -849,6 +849,7 @@ export default function exaMcp(pi: ExtensionAPI) {
 			label: "Exa Web Search",
 			description:
 				"Real-time web search via Exa; best for up-to-date info. Client-side truncation; override with piMaxBytes/piMaxLines (clamped by config).",
+			promptSnippet: "web_search_exa: search the live web with Exa.",
 			parameters: webSearchParams,
 			async execute(_toolCallId, params, signal, onUpdate, _ctx) {
 				if (signal?.aborted) {
@@ -863,18 +864,19 @@ export default function exaMcp(pi: ExtensionAPI) {
 					const effectiveLimits = resolveEffectiveLimits(requestedLimits, maxLimits);
 					const result = await client.callTool("web_search_exa", mcpArgs, signal);
 					const { text, details } = formatToolOutput("web_search_exa", endpoint, result, effectiveLimits);
-					return { content: [{ type: "text", text }], details, isError: result.isError === true };
+					if (result.isError === true) {
+						throw new Error(text);
+					}
+					return { content: [{ type: "text", text }], details };
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error);
-					return {
-						content: [{ type: "text", text: `Exa MCP error: ${message}` }],
-						isError: true,
+					throw Object.assign(new Error(`Exa MCP error: ${message}`), {
 						details: {
 							tool: "web_search_exa",
 							endpoint: redactEndpoint(client.currentEndpoint()),
 							error: message,
 						} satisfies McpErrorDetails,
-					};
+					});
 				}
 			},
 		});
@@ -887,6 +889,7 @@ export default function exaMcp(pi: ExtensionAPI) {
 			label: "Exa Code Context",
 			description:
 				"Search code/docs via Exa; best for API usage/examples. Client-side truncation; override with piMaxBytes/piMaxLines (clamped by config).",
+			promptSnippet: "get_code_context_exa: search code and documentation examples with Exa.",
 			parameters: codeContextParams,
 			async execute(_toolCallId, params, signal, onUpdate, _ctx) {
 				if (signal?.aborted) {
@@ -901,18 +904,19 @@ export default function exaMcp(pi: ExtensionAPI) {
 					const effectiveLimits = resolveEffectiveLimits(requestedLimits, maxLimits);
 					const result = await client.callTool("get_code_context_exa", mcpArgs, signal);
 					const { text, details } = formatToolOutput("get_code_context_exa", endpoint, result, effectiveLimits);
-					return { content: [{ type: "text", text }], details, isError: result.isError === true };
+					if (result.isError === true) {
+						throw new Error(text);
+					}
+					return { content: [{ type: "text", text }], details };
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error);
-					return {
-						content: [{ type: "text", text: `Exa MCP error: ${message}` }],
-						isError: true,
+					throw Object.assign(new Error(`Exa MCP error: ${message}`), {
 						details: {
 							tool: "get_code_context_exa",
 							endpoint: redactEndpoint(client.currentEndpoint()),
 							error: message,
 						} satisfies McpErrorDetails,
-					};
+					});
 				}
 			},
 		});

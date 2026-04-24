@@ -49,7 +49,7 @@ Add to `~/.pi/agent/auth.json`:
 ### Option 3: Runtime CLI Flag
 
 ```bash
-pi --api-key synthetic=syn_your_key_here
+pi --model synthetic/hf:moonshotai/Kimi-K2.5 --api-key syn_your_key_here
 ```
 
 ## Usage
@@ -59,10 +59,10 @@ pi --api-key synthetic=syn_your_key_here
 pi /model
 
 # Direct model selection
-pi --model synthetic:hf:moonshotai/Kimi-K2.5
+pi --model synthetic/hf:moonshotai/Kimi-K2.5
 
-# Use default Synthetic model
-pi --model synthetic
+# Or use provider + model flags separately
+pi --provider synthetic --model hf:moonshotai/Kimi-K2.5
 ```
 
 ### Extension Command
@@ -95,7 +95,7 @@ When multiple sources are configured, pi checks in this order:
 
 ## Requirements
 
-- pi v0.51.0 or later
+- pi v0.70.2 or later
 - A Synthetic API key from [synthetic.new](https://synthetic.new)
 
 ## Notes

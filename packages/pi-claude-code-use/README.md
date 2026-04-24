@@ -69,8 +69,6 @@ When these companion extensions from this monorepo are loaded alongside `pi-clau
 | `firecrawl_scrape` | `mcp__firecrawl__scrape` |
 | `firecrawl_map` | `mcp__firecrawl__map` |
 | `firecrawl_search` | `mcp__firecrawl__search` |
-| `generate_image` | `mcp__antigravity__generate_image` |
-| `image_quota` | `mcp__antigravity__image_quota` |
 
 ### How companion discovery works
 

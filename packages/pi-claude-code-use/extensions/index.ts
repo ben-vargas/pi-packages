@@ -1,10 +1,15 @@
 import { appendFileSync } from "node:fs";
 import { basename, dirname } from "node:path";
 import { createJiti } from "@mariozechner/jiti";
+import * as piAgentCoreModule from "@mariozechner/pi-agent-core";
 import * as piAiModule from "@mariozechner/pi-ai";
+import * as piAiOauthModule from "@mariozechner/pi-ai/oauth";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import * as piCodingAgentModule from "@mariozechner/pi-coding-agent";
-import * as typeboxModule from "@sinclair/typebox";
+import * as piTuiModule from "@mariozechner/pi-tui";
+import * as typeboxModule from "typebox";
+import * as typeboxCompileModule from "typebox/compile";
+import * as typeboxValueModule from "typebox/value";
 
 // ============================================================================
 // Types
@@ -55,8 +60,6 @@ const FLAT_TO_MCP = new Map<string, string>([
 	["firecrawl_scrape", "mcp__firecrawl__scrape"],
 	["firecrawl_map", "mcp__firecrawl__map"],
 	["firecrawl_search", "mcp__firecrawl__search"],
-	["generate_image", "mcp__antigravity__generate_image"],
-	["image_quota", "mcp__antigravity__image_quota"],
 ]);
 
 /** Known companion extensions and the tools they provide. */
@@ -76,14 +79,6 @@ const COMPANIONS: CompanionSpec[] = [
 			["firecrawl_scrape", "mcp__firecrawl__scrape"],
 			["firecrawl_map", "mcp__firecrawl__map"],
 			["firecrawl_search", "mcp__firecrawl__search"],
-		],
-	},
-	{
-		dirName: "pi-antigravity-image-gen",
-		packageName: "@benvargas/pi-antigravity-image-gen",
-		aliases: [
-			["generate_image", "mcp__antigravity__generate_image"],
-			["image_quota", "mcp__antigravity__image_quota"],
 		],
 	},
 ];
@@ -157,10 +152,21 @@ function collectToolNames(tools: unknown[]): Set<string> {
 	return names;
 }
 
+function collectToolsByName(tools: unknown[]): Map<string, Record<string, unknown>> {
+	const byName = new Map<string, Record<string, unknown>>();
+	for (const tool of tools) {
+		if (isPlainObject(tool) && typeof tool.name === "string") {
+			byName.set(lower(tool.name), tool);
+		}
+	}
+	return byName;
+}
+
 function filterAndRemapTools(tools: unknown[] | undefined, disableFilter: boolean): unknown[] | undefined {
 	if (!Array.isArray(tools)) return tools;
 
 	const advertised = collectToolNames(tools);
+	const toolsByName = collectToolsByName(tools);
 	const emitted = new Set<string>();
 	const result: unknown[] = [];
 
@@ -191,9 +197,9 @@ function filterAndRemapTools(tools: unknown[] | undefined, disableFilter: boolea
 		if (mcpAlias) {
 			const aliasLc = lower(mcpAlias);
 			if (advertised.has(aliasLc) && !emitted.has(aliasLc)) {
-				// Alias exists in tool list → rename flat to alias, dedup
+				// Alias exists in tool list -> preserve its metadata, including cache_control.
 				emitted.add(aliasLc);
-				result.push({ ...tool, name: mcpAlias });
+				result.push(toolsByName.get(aliasLc) ?? { ...tool, name: mcpAlias });
 			} else if (disableFilter && !emitted.has(nameLc)) {
 				// Filter disabled: keep flat name if not yet emitted
 				emitted.add(nameLc);
@@ -347,9 +353,17 @@ function getJitiLoader() {
 			moduleCache: false,
 			tryNative: false,
 			virtualModules: {
+				"@mariozechner/pi-agent-core": piAgentCoreModule,
 				"@mariozechner/pi-ai": piAiModule,
+				"@mariozechner/pi-ai/oauth": piAiOauthModule,
 				"@mariozechner/pi-coding-agent": piCodingAgentModule,
+				"@mariozechner/pi-tui": piTuiModule,
+				typebox: typeboxModule,
+				"typebox/compile": typeboxCompileModule,
+				"typebox/value": typeboxValueModule,
 				"@sinclair/typebox": typeboxModule,
+				"@sinclair/typebox/compile": typeboxCompileModule,
+				"@sinclair/typebox/value": typeboxValueModule,
 			},
 		});
 	}

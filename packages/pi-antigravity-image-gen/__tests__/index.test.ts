@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { describe, expect, it, vi } from "vitest";
-import antigravityImageGen from "../extensions/index.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import antigravityImageGen, { DEPRECATION_MESSAGE } from "../extensions/index.js";
 
 const createMockPi = () =>
 	({
@@ -8,11 +8,16 @@ const createMockPi = () =>
 	}) satisfies Partial<ExtensionAPI>;
 
 describe("pi-antigravity-image-gen", () => {
-	it("registers tools", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("is deprecated and does not register tools", () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 		const mockPi = createMockPi();
 		antigravityImageGen(mockPi as unknown as ExtensionAPI);
 
-		const toolNames = mockPi.registerTool.mock.calls.map(([tool]) => tool.name);
-		expect(toolNames).toEqual(expect.arrayContaining(["generate_image", "image_quota"]));
+		expect(mockPi.registerTool).not.toHaveBeenCalled();
+		expect(warn).toHaveBeenCalledWith(DEPRECATION_MESSAGE);
 	});
 });

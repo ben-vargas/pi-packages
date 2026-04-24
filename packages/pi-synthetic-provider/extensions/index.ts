@@ -32,10 +32,10 @@
  *   pi /model
  *
  *   # Use specific model
- *   pi --model synthetic:hf:moonshotai/Kimi-K2.5
+ *   pi --model synthetic/hf:moonshotai/Kimi-K2.5
  *
  *   # Use default model
- *   pi --model synthetic
+ *   pi --provider synthetic --model hf:moonshotai/Kimi-K2.5
  *
  * Supported Models (as of 2026-04-12):
  * - hf:moonshotai/Kimi-K2.5 (reasoning + vision)

@@ -4,8 +4,8 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import { StringEnum } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, truncateHead } from "@mariozechner/pi-coding-agent";
-import type { Static, TSchema } from "@sinclair/typebox";
-import { Type } from "@sinclair/typebox";
+import type { Static, TSchema } from "typebox";
+import { Type } from "typebox";
 
 const DEFAULT_BASE_URL = "https://api.firecrawl.dev";
 const DEFAULT_TIMEOUT_MS = 30000;
@@ -417,45 +417,45 @@ export {
 };
 
 export default function piFirecrawl(pi: ExtensionAPI) {
-	pi.registerFlag("--firecrawl-url", {
+	pi.registerFlag("firecrawl-url", {
 		description: "Override the Firecrawl API base URL.",
 		type: "string",
 	});
-	pi.registerFlag("--firecrawl-api-key", {
+	pi.registerFlag("firecrawl-api-key", {
 		description: "Firecrawl API key (used as Authorization Bearer token).",
 		type: "string",
 	});
-	pi.registerFlag("--firecrawl-timeout-ms", {
+	pi.registerFlag("firecrawl-timeout-ms", {
 		description: "HTTP timeout for API requests (milliseconds).",
 		type: "string",
 	});
-	pi.registerFlag("--firecrawl-config", {
+	pi.registerFlag("firecrawl-config", {
 		description: `Path to JSON config file (defaults to ~/.pi/agent/extensions/${CONFIG_FILENAME}).`,
 		type: "string",
 	});
-	pi.registerFlag("--firecrawl-tools", {
+	pi.registerFlag("firecrawl-tools", {
 		description: "Comma-separated list of Firecrawl tools to register.",
 		type: "string",
 	});
-	pi.registerFlag("--firecrawl-max-bytes", {
+	pi.registerFlag("firecrawl-max-bytes", {
 		description: "Max bytes to keep from tool output (default: 51200).",
 		type: "string",
 	});
-	pi.registerFlag("--firecrawl-max-lines", {
+	pi.registerFlag("firecrawl-max-lines", {
 		description: "Max lines to keep from tool output (default: 2000).",
 		type: "string",
 	});
 
 	function getConfig(): FirecrawlRequestConfig {
-		const configFlag = pi.getFlag("--firecrawl-config");
+		const configFlag = pi.getFlag("firecrawl-config");
 		const config = loadConfig(typeof configFlag === "string" ? configFlag : undefined);
 
-		const urlFlag = pi.getFlag("--firecrawl-url");
-		const apiKeyFlag = pi.getFlag("--firecrawl-api-key");
-		const timeoutFlag = pi.getFlag("--firecrawl-timeout-ms");
-		const toolsFlag = pi.getFlag("--firecrawl-tools");
-		const maxBytesFlag = pi.getFlag("--firecrawl-max-bytes");
-		const maxLinesFlag = pi.getFlag("--firecrawl-max-lines");
+		const urlFlag = pi.getFlag("firecrawl-url");
+		const apiKeyFlag = pi.getFlag("firecrawl-api-key");
+		const timeoutFlag = pi.getFlag("firecrawl-timeout-ms");
+		const toolsFlag = pi.getFlag("firecrawl-tools");
+		const maxBytesFlag = pi.getFlag("firecrawl-max-bytes");
+		const maxLinesFlag = pi.getFlag("firecrawl-max-lines");
 
 		const apiKey =
 			typeof apiKeyFlag === "string" ? apiKeyFlag : (process.env.FIRECRAWL_API_KEY ?? config?.apiKey ?? undefined);
@@ -502,6 +502,7 @@ export default function piFirecrawl(pi: ExtensionAPI) {
 		name: "firecrawl_scrape" | "firecrawl_map" | "firecrawl_search",
 		label: string,
 		description: string,
+		promptSnippet: string,
 		parameters: TParams,
 		path: string,
 	) => {
@@ -511,6 +512,7 @@ export default function piFirecrawl(pi: ExtensionAPI) {
 			name,
 			label,
 			description,
+			promptSnippet,
 			parameters,
 			async execute(_toolCallId, params: Static<TParams>, signal, onUpdate, _ctx) {
 				if (signal?.aborted) {
@@ -534,11 +536,9 @@ export default function piFirecrawl(pi: ExtensionAPI) {
 					return { content: [{ type: "text", text }], details };
 				} catch (error) {
 					const message = error instanceof Error ? error.message : String(error);
-					return {
-						content: [{ type: "text", text: `Firecrawl error: ${message}` }],
-						isError: true,
+					throw Object.assign(new Error(`Firecrawl error: ${message}`), {
 						details: { tool: name, baseUrl: safeBaseUrl, error: message },
-					};
+					});
 				}
 			},
 		});
@@ -548,6 +548,7 @@ export default function piFirecrawl(pi: ExtensionAPI) {
 		"firecrawl_scrape",
 		"Firecrawl Scrape",
 		"Scrape a single URL. Best when you already know the page to read. Client-side truncation; override with piMaxBytes/piMaxLines (clamped by config).",
+		"firecrawl_scrape: scrape a known URL and return page content.",
 		scrapeParams,
 		"/v1/scrape",
 	);
@@ -556,6 +557,7 @@ export default function piFirecrawl(pi: ExtensionAPI) {
 		"firecrawl_map",
 		"Firecrawl Map",
 		"Discover URLs on a site. Use before selecting pages to scrape. Client-side truncation; override with piMaxBytes/piMaxLines (clamped by config).",
+		"firecrawl_map: discover crawlable URLs for a site.",
 		mapParams,
 		"/v1/map",
 	);
@@ -564,6 +566,7 @@ export default function piFirecrawl(pi: ExtensionAPI) {
 		"firecrawl_search",
 		"Firecrawl Search",
 		"Search the web and optionally scrape search results. Client-side truncation; override with piMaxBytes/piMaxLines (clamped by config).",
+		"firecrawl_search: search the web and optionally scrape search results.",
 		searchParams,
 		"/v1/search",
 	);
