@@ -1,7 +1,7 @@
 {
   "name": "@benvargas/pi-openai-verbosity",
   "version": "1.0.0",
-  "description": "OpenAI text verbosity rewrites for pi - Sets low verbosity for configured OpenAI Codex models",
+  "description": "Per-model OpenAI Codex text verbosity overrides for pi",
   "keywords": [
     "pi",
     "pi-package",
@@ -9,9 +9,12 @@
     "pi-coding-agent",
     "openai",
     "codex",
+    "openai-codex",
     "gpt-5.5",
+    "gpt-5.3-codex",
     "verbosity",
-    "text-verbosity"
+    "text-verbosity",
+    "per-model"
   ],
   "type": "module",
   "files": [
