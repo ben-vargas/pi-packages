@@ -1,11 +1,11 @@
-import { appendFileSync } from "node:fs";
-import { basename, dirname } from "node:path";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { createJiti } from "@mariozechner/jiti";
 import * as piAgentCoreModule from "@mariozechner/pi-agent-core";
 import * as piAiModule from "@mariozechner/pi-ai";
 import * as piAiOauthModule from "@mariozechner/pi-ai/oauth";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import * as piCodingAgentModule from "@mariozechner/pi-coding-agent";
+import { type ExtensionAPI, getAgentDir } from "@mariozechner/pi-coding-agent";
 import * as piTuiModule from "@mariozechner/pi-tui";
 import * as typeboxModule from "typebox";
 import * as typeboxCompileModule from "typebox/compile";
@@ -87,6 +87,51 @@ const COMPANIONS: CompanionSpec[] = [
 const TOOL_TO_COMPANION = new Map<string, CompanionSpec>(
 	COMPANIONS.flatMap((spec) => spec.aliases.map(([flat]) => [flat, spec] as const)),
 );
+
+// ============================================================================
+// User-defined tool aliases (pi-claude-code-use.json)
+//
+//   - project: <cwd>/.pi/extensions/pi-claude-code-use.json
+//   - global:  <agentDir>/extensions/pi-claude-code-use.json   (agentDir from pi)
+//
+// Project file's keys replace global file's via spread-merge — same effective
+// behaviour as pi-core's deepMergeSettings for our top-level array key.
+// Schema: { "toolAliases": [[flat, mcp], ...] }
+// ============================================================================
+
+const CONFIG_FILENAME = "pi-claude-code-use.json";
+
+type ToolAliasPair = readonly [flatName: string, mcpName: string];
+
+function readConfigFile(filePath: string): Record<string, unknown> {
+	if (!existsSync(filePath)) return {};
+	try {
+		const parsed = JSON.parse(readFileSync(filePath, "utf-8")) as unknown;
+		return isPlainObject(parsed) ? parsed : {};
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		console.warn(`[pi-claude-code-use] Failed to read ${filePath}: ${message}`);
+		return {};
+	}
+}
+
+// Returns `undefined` when `toolAliases` is missing or not an array; returns
+// `[]` for an explicit empty array (which disables inherited globals).
+function extractToolAliasPairs(value: unknown): ToolAliasPair[] | undefined {
+	if (!isPlainObject(value)) return undefined;
+	const raw = (value as { toolAliases?: unknown }).toolAliases;
+	if (!Array.isArray(raw)) return undefined;
+	return raw.filter(
+		(e): e is ToolAliasPair => Array.isArray(e) && typeof e[0] === "string" && typeof e[1] === "string",
+	);
+}
+
+function loadToolAliases(cwd: string, agentDir: string = getAgentDir()): ToolAliasPair[] {
+	const globalPath = join(agentDir, "extensions", CONFIG_FILENAME);
+	const projectPath = join(cwd, ".pi", "extensions", CONFIG_FILENAME);
+	const merged = { ...readConfigFile(globalPath), ...readConfigFile(projectPath) };
+	return extractToolAliasPairs(merged) ?? [];
+}
 
 // ============================================================================
 // Helpers
@@ -473,9 +518,17 @@ async function captureCompanionTools(baseDir: string, realPi: ExtensionAPI): Pro
 	return pending;
 }
 
-async function registerAliasesForLoadedCompanions(pi: ExtensionAPI): Promise<void> {
+async function registerAliasesForLoadedCompanions(
+	pi: ExtensionAPI,
+	opts: { cwd?: string; agentDir?: string } = {},
+): Promise<void> {
 	// Clear capture cache so flag/config changes since last call take effect
 	captureCache.clear();
+
+	// Pick up user-defined tool aliases from settings.json so subsequent payload
+	// transforms (filterAndRemapTools, remapToolChoice, message rewriting) see them.
+	const userToolAliases = loadToolAliases(opts.cwd ?? process.cwd(), opts.agentDir);
+	for (const [flat, mcp] of userToolAliases) FLAT_TO_MCP.set(lower(flat), mcp);
 
 	const allTools = pi.getAllTools();
 	const toolIndex = new Map<string, ToolInfo>();
@@ -485,31 +538,37 @@ async function registerAliasesForLoadedCompanions(pi: ExtensionAPI): Promise<voi
 		knownNames.add(lower(tool.name));
 	}
 
+	// Loads the source extension via jiti and re-registers its captured tool
+	// definition under `mcpName`. Skips if already registered or unloadable.
+	const registerMcpAlias = async (tool: ToolInfo | undefined, flatName: string, mcpName: string): Promise<void> => {
+		if (!tool || registeredMcpAliases.has(mcpName) || knownNames.has(lower(mcpName))) return;
+		// Prefer the extension file's directory (sourceInfo.path is the actual entry
+		// point). Fall back to baseDir, which can be the monorepo root.
+		const loadDir = tool.sourceInfo?.path ? dirname(tool.sourceInfo.path) : tool.sourceInfo?.baseDir;
+		if (!loadDir) return;
+		const def = (await captureCompanionTools(loadDir, pi)).get(flatName);
+		if (!def) return;
+		pi.registerTool({
+			...def,
+			name: mcpName,
+			label: def.label?.startsWith("MCP ") ? def.label : `MCP ${def.label ?? mcpName}`,
+		});
+		registeredMcpAliases.add(mcpName);
+		knownNames.add(lower(mcpName));
+	};
+
+	// Built-in companion aliases: gated by source-info match against COMPANIONS.
 	for (const spec of COMPANIONS) {
 		for (const [flatName, mcpName] of spec.aliases) {
-			if (registeredMcpAliases.has(mcpName) || knownNames.has(lower(mcpName))) continue;
-
 			const tool = toolIndex.get(lower(flatName));
-			if (!tool || !isCompanionSource(tool, spec)) continue;
-
-			// Prefer the extension file's directory for loading (sourceInfo.path is the actual
-			// entry point). Fall back to baseDir only if path is unavailable. baseDir can be
-			// the monorepo root which doesn't contain the extension entry point directly.
-			const loadDir = tool.sourceInfo?.path ? dirname(tool.sourceInfo.path) : tool.sourceInfo?.baseDir;
-			if (!loadDir) continue;
-
-			const captured = await captureCompanionTools(loadDir, pi);
-			const def = captured.get(flatName);
-			if (!def) continue;
-
-			pi.registerTool({
-				...def,
-				name: mcpName,
-				label: def.label?.startsWith("MCP ") ? def.label : `MCP ${def.label ?? mcpName}`,
-			});
-			registeredMcpAliases.add(mcpName);
-			knownNames.add(lower(mcpName));
+			if (tool && !isCompanionSource(tool, spec)) continue;
+			await registerMcpAlias(tool, flatName, mcpName);
 		}
+	}
+
+	// User-defined aliases: matched by flat name only.
+	for (const [flatName, mcpName] of userToolAliases) {
+		await registerMcpAlias(toolIndex.get(lower(flatName)), flatName, mcpName);
 	}
 }
 
@@ -636,10 +695,12 @@ export const _test = {
 	autoActivatedAliases,
 	buildCaptureShim,
 	collectToolNames,
+	extractToolAliasPairs,
 	filterAndRemapTools,
 	getLastManagedToolList: () => lastManagedToolList,
 	isCompanionSource,
 	isPlainObject,
+	loadToolAliases,
 	lower,
 	registerAliasesForLoadedCompanions,
 	registeredMcpAliases,

@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import piClaudeCodeUse, { _test } from "../extensions/index.js";
 
 // ============================================================================
@@ -874,5 +874,110 @@ describe("pi-claude-code-use", () => {
 
 		await _test.registerAliasesForLoadedCompanions(pi as unknown as ExtensionAPI);
 		expect(pi.registerTool).not.toHaveBeenCalled();
+	});
+
+	// ----------------------------------------------------------------
+	// User-defined tool aliases (pi-claude-code-use.json)
+	// ----------------------------------------------------------------
+
+	describe("user-defined tool aliases", () => {
+		const testDir = join(process.cwd(), "test-cc-use-tmp");
+		const agentDir = join(testDir, "agent");
+		const projectDir = join(testDir, "project");
+		const globalConfigPath = join(agentDir, "extensions", "pi-claude-code-use.json");
+		const projectConfigPath = join(projectDir, ".pi", "extensions", "pi-claude-code-use.json");
+
+		beforeEach(() => {
+			if (existsSync(testDir)) rmSync(testDir, { recursive: true });
+			mkdirSync(dirname(globalConfigPath), { recursive: true });
+			mkdirSync(dirname(projectConfigPath), { recursive: true });
+		});
+
+		afterEach(() => {
+			if (existsSync(testDir)) rmSync(testDir, { recursive: true });
+		});
+
+		it("extractToolAliasPairs keeps string pairs and drops malformed entries", () => {
+			const pairs = _test.extractToolAliasPairs({
+				toolAliases: [["subagent", "mcp__subagent__run"], ["only-one"], "not-a-pair", [123, "mcp__bad__num"]],
+			});
+			expect(pairs).toEqual([["subagent", "mcp__subagent__run"]]);
+		});
+
+		const load = () => _test.loadToolAliases(projectDir, agentDir);
+
+		it("loadToolAliases: project file replaces global file", () => {
+			writeFileSync(
+				globalConfigPath,
+				JSON.stringify({
+					toolAliases: [
+						["subagent", "mcp__subagent__global"],
+						["only_global", "mcp__g__one"],
+					],
+				}),
+			);
+			writeFileSync(
+				projectConfigPath,
+				JSON.stringify({
+					toolAliases: [
+						["subagent", "mcp__subagent__project"],
+						["only_project", "mcp__p__one"],
+					],
+				}),
+			);
+
+			const pairs = load();
+			expect(pairs).toEqual([
+				["subagent", "mcp__subagent__project"],
+				["only_project", "mcp__p__one"],
+			]);
+		});
+
+		it("loadToolAliases falls back to global when project file is absent", () => {
+			writeFileSync(globalConfigPath, JSON.stringify({ toolAliases: [["only_global", "mcp__g__one"]] }));
+			expect(load()).toEqual([["only_global", "mcp__g__one"]]);
+		});
+
+		it("loadToolAliases: explicit empty project array disables inherited globals", () => {
+			writeFileSync(globalConfigPath, JSON.stringify({ toolAliases: [["only_global", "mcp__g__one"]] }));
+			writeFileSync(projectConfigPath, JSON.stringify({ toolAliases: [] }));
+			expect(load()).toEqual([]);
+		});
+
+		it("registers an MCP alias for a user-configured flat tool using its sourceInfo path", async () => {
+			writeFileSync(projectConfigPath, JSON.stringify({ toolAliases: [["subagent", "mcp__subagent__run"]] }));
+
+			const extDir = join(projectDir, "my-subagent-ext");
+			mkdirSync(extDir, { recursive: true });
+			writeFileSync(
+				join(extDir, "index.js"),
+				[
+					'import { Type } from "typebox";',
+					"const schema = Type.Object({ task: Type.String() });",
+					"export default function subagentExt(pi) {",
+					"  pi.registerTool({",
+					'    name: "subagent",',
+					"    description: 'User-configured subagent tool',",
+					"    inputSchema: schema,",
+					"    async execute() { return { content: [{ type: 'text', text: 'ok' }] }; }",
+					"  });",
+					"}",
+				].join("\n"),
+			);
+
+			const pi = createMockPi();
+			pi.getAllTools.mockReturnValue([mockTool("subagent", { baseDir: extDir, path: join(extDir, "index.js") })]);
+
+			try {
+				await _test.registerAliasesForLoadedCompanions(pi as unknown as ExtensionAPI, {
+					cwd: projectDir,
+					agentDir,
+				});
+				expect(pi.registerTool).toHaveBeenCalledWith(expect.objectContaining({ name: "mcp__subagent__run" }));
+				expect(_test.FLAT_TO_MCP.get("subagent")).toBe("mcp__subagent__run");
+			} finally {
+				_test.FLAT_TO_MCP.delete("subagent");
+			}
+		});
 	});
 });
