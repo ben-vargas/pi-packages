@@ -828,6 +828,7 @@ describe("pi-claude-code-use", () => {
 	it("registers MCP alias tools from companion extension factories", async () => {
 		const tempParent = mkdtempSync(join(tmpdir(), "pi-claude-code-use-"));
 		const tempRoot = join(tempParent, "pi-exa-mcp");
+		const isolatedAgentDir = join(tempParent, "agent");
 		try {
 			const extDir = join(tempRoot, "extensions");
 			mkdirSync(extDir, { recursive: true });
@@ -855,7 +856,10 @@ describe("pi-claude-code-use", () => {
 				mockTool("web_search_exa", { baseDir: tempRoot, path: join(extDir, "index.js") }),
 			]);
 
-			await _test.registerAliasesForLoadedCompanions(pi as unknown as ExtensionAPI);
+			await _test.registerMcpAliases(pi as unknown as ExtensionAPI, {
+				cwd: tempParent,
+				agentDir: isolatedAgentDir,
+			});
 
 			expect(pi.registerTool).toHaveBeenCalledWith(expect.objectContaining({ name: "mcp__exa__web_search" }));
 		} finally {
@@ -864,16 +868,24 @@ describe("pi-claude-code-use", () => {
 	});
 
 	it("refuses to alias tools from unrelated packages even if names match", async () => {
-		const pi = createMockPi();
-		pi.getAllTools.mockReturnValue([
-			mockTool("generate_image", {
-				baseDir: "/tmp/node_modules/some-random-ext",
-				path: "/tmp/node_modules/some-random-ext/extensions/index.ts",
-			}),
-		]);
+		const tempParent = mkdtempSync(join(tmpdir(), "pi-claude-code-use-"));
+		try {
+			const pi = createMockPi();
+			pi.getAllTools.mockReturnValue([
+				mockTool("generate_image", {
+					baseDir: "/tmp/node_modules/some-random-ext",
+					path: "/tmp/node_modules/some-random-ext/extensions/index.ts",
+				}),
+			]);
 
-		await _test.registerAliasesForLoadedCompanions(pi as unknown as ExtensionAPI);
-		expect(pi.registerTool).not.toHaveBeenCalled();
+			await _test.registerMcpAliases(pi as unknown as ExtensionAPI, {
+				cwd: tempParent,
+				agentDir: join(tempParent, "agent"),
+			});
+			expect(pi.registerTool).not.toHaveBeenCalled();
+		} finally {
+			rmSync(tempParent, { recursive: true, force: true });
+		}
 	});
 
 	// ----------------------------------------------------------------
@@ -969,7 +981,7 @@ describe("pi-claude-code-use", () => {
 			pi.getAllTools.mockReturnValue([mockTool("subagent", { baseDir: extDir, path: join(extDir, "index.js") })]);
 
 			try {
-				await _test.registerAliasesForLoadedCompanions(pi as unknown as ExtensionAPI, {
+				await _test.registerMcpAliases(pi as unknown as ExtensionAPI, {
 					cwd: projectDir,
 					agentDir,
 				});

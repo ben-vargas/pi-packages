@@ -120,7 +120,11 @@ function readConfigFile(filePath: string): Record<string, unknown> {
 function extractToolAliasPairs(value: unknown): ToolAliasPair[] | undefined {
 	if (!isPlainObject(value)) return undefined;
 	const raw = (value as { toolAliases?: unknown }).toolAliases;
-	if (!Array.isArray(raw)) return undefined;
+	if (raw === undefined) return undefined;
+	if (!Array.isArray(raw)) {
+		console.warn(`[pi-claude-code-use] Ignoring "toolAliases": expected array, got ${typeof raw}`);
+		return undefined;
+	}
 	return raw.filter(
 		(e): e is ToolAliasPair => Array.isArray(e) && typeof e[0] === "string" && typeof e[1] === "string",
 	);
@@ -518,10 +522,7 @@ async function captureCompanionTools(baseDir: string, realPi: ExtensionAPI): Pro
 	return pending;
 }
 
-async function registerAliasesForLoadedCompanions(
-	pi: ExtensionAPI,
-	opts: { cwd?: string; agentDir?: string } = {},
-): Promise<void> {
+async function registerMcpAliases(pi: ExtensionAPI, opts: { cwd?: string; agentDir?: string } = {}): Promise<void> {
 	// Clear capture cache so flag/config changes since last call take effect
 	captureCache.clear();
 
@@ -656,11 +657,11 @@ function syncAliasActivation(pi: ExtensionAPI, enableAliases: boolean): void {
 
 export default async function piClaudeCodeUse(pi: ExtensionAPI): Promise<void> {
 	pi.on("session_start", async () => {
-		await registerAliasesForLoadedCompanions(pi);
+		await registerMcpAliases(pi);
 	});
 
 	pi.on("before_agent_start", async (_event, ctx) => {
-		await registerAliasesForLoadedCompanions(pi);
+		await registerMcpAliases(pi);
 		const model = ctx.model;
 		const isOAuth = model?.provider === "anthropic" && ctx.modelRegistry.isUsingOAuth(model);
 		syncAliasActivation(pi, isOAuth);
@@ -702,7 +703,7 @@ export const _test = {
 	isPlainObject,
 	loadToolAliases,
 	lower,
-	registerAliasesForLoadedCompanions,
+	registerMcpAliases,
 	registeredMcpAliases,
 	remapMessageToolNames,
 	remapToolChoice,
