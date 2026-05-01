@@ -78,11 +78,11 @@ export async function fetchSyntheticModels(apiKey?: string): Promise<ProviderMod
 /**
  * Fallback models if API fetch fails.
  * Data sourced from: curl https://api.synthetic.new/openai/v1/models
- * Last updated: 2026-04-12
+ * Last updated: 2026-05-01
  *
  * Pricing format: $/million tokens
  * Synthetic-hosted models:
- * - Kimi-K2.5 & NVFP4: $0.45 input, $3.40 output, 262K context
+ * - Kimi-K2.6 & NVFP4: $0.95 input, $4.00 output, 262K context
  * - MiniMax-M2.5: $0.40 input, $2.00 output, 191K context
  * - Nemotron-3-Super-120B-A12B-NVFP4: $0.30 input, $1.00 output, 262K context
  * - GLM-5.1: $1.00 input, $3.00 output, 196K context
@@ -90,14 +90,14 @@ export async function fetchSyntheticModels(apiKey?: string): Promise<ProviderMod
 export function getFallbackModels(): ProviderModelConfig[] {
 	return [
 		{
-			id: "hf:moonshotai/Kimi-K2.5",
-			name: "moonshotai/Kimi-K2.5",
+			id: "hf:moonshotai/Kimi-K2.6",
+			name: "moonshotai/Kimi-K2.6",
 			reasoning: true,
 			input: ["text", "image"],
 			cost: {
-				input: 0.45,
-				output: 3.4,
-				cacheRead: 0.45,
+				input: 0.95,
+				output: 4,
+				cacheRead: 0.95,
 				cacheWrite: 0,
 			},
 			contextWindow: 262144,
@@ -105,14 +105,14 @@ export function getFallbackModels(): ProviderModelConfig[] {
 			compat: SYNTHETIC_COMPAT,
 		},
 		{
-			id: "hf:nvidia/Kimi-K2.5-NVFP4",
-			name: "nvidia/Kimi-K2.5-NVFP4",
+			id: "hf:nvidia/Kimi-K2.6-NVFP4",
+			name: "nvidia/Kimi-K2.6-NVFP4",
 			reasoning: true,
 			input: ["text", "image"],
 			cost: {
-				input: 0.45,
-				output: 3.4,
-				cacheRead: 0.45,
+				input: 0.95,
+				output: 4,
+				cacheRead: 0.95,
 				cacheWrite: 0,
 			},
 			contextWindow: 262144,

@@ -32,14 +32,14 @@
  *   pi /model
  *
  *   # Use specific model
- *   pi --model synthetic/hf:moonshotai/Kimi-K2.5
+ *   pi --model synthetic/hf:moonshotai/Kimi-K2.6
  *
  *   # Use default model
- *   pi --provider synthetic --model hf:moonshotai/Kimi-K2.5
+ *   pi --provider synthetic --model hf:moonshotai/Kimi-K2.6
  *
- * Supported Models (as of 2026-04-12):
- * - hf:moonshotai/Kimi-K2.5 (reasoning + vision)
- * - hf:nvidia/Kimi-K2.5-NVFP4 (reasoning + vision, NVIDIA FP4 variant)
+ * Supported Models (as of 2026-05-01):
+ * - hf:moonshotai/Kimi-K2.6 (reasoning + vision)
+ * - hf:nvidia/Kimi-K2.6-NVFP4 (reasoning + vision, NVIDIA FP4 variant)
  * - hf:MiniMaxAI/MiniMax-M2.5 (reasoning)
  * - hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4 (reasoning)
  * - hf:zai-org/GLM-5.1 (reasoning)
