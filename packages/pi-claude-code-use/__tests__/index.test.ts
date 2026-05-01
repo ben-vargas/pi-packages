@@ -54,6 +54,12 @@ function createMockPi() {
 	};
 }
 
+function getRegisteredHandler(pi: ReturnType<typeof createMockPi>, eventName: string) {
+	const call = pi.on.mock.calls.find(([event]) => event === eventName);
+	expect(call).toBeDefined();
+	return call?.[1] as (event: unknown, ctx: Record<string, unknown>) => Promise<unknown>;
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -63,6 +69,7 @@ describe("pi-claude-code-use", () => {
 		_test.registeredMcpAliases.clear();
 		_test.autoActivatedAliases.clear();
 		_test.setLastManagedToolList(undefined);
+		_test.refreshAliasMap([]);
 	});
 
 	// ----------------------------------------------------------------
@@ -89,6 +96,33 @@ describe("pi-claude-code-use", () => {
 		});
 
 		await expect(piClaudeCodeUse(pi as unknown as ExtensionAPI)).resolves.toBeUndefined();
+	});
+
+	it("uses the event cwd when loading project alias config", async () => {
+		const tempParent = mkdtempSync(join(tmpdir(), "pi-claude-code-use-"));
+		const projectDir = join(tempParent, "project");
+		try {
+			vi.stubEnv("PI_CODING_AGENT_DIR", join(tempParent, "agent"));
+			const projectConfigPath = join(projectDir, ".pi", "extensions", "pi-claude-code-use.json");
+			mkdirSync(dirname(projectConfigPath), { recursive: true });
+			writeFileSync(projectConfigPath, JSON.stringify({ toolAliases: [["subagent", "mcp__subagent__run"]] }));
+
+			const pi = createMockPi();
+			await piClaudeCodeUse(pi as unknown as ExtensionAPI);
+
+			const ctx = { cwd: projectDir, model: undefined };
+			const sessionStart = getRegisteredHandler(pi, "session_start");
+			await sessionStart({ type: "session_start" }, ctx);
+			expect(_test.FLAT_TO_MCP.get("subagent")).toBe("mcp__subagent__run");
+
+			_test.refreshAliasMap([]);
+			const beforeAgentStart = getRegisteredHandler(pi, "before_agent_start");
+			await beforeAgentStart({ type: "before_agent_start", prompt: "", systemPrompt: "" }, ctx);
+			expect(_test.FLAT_TO_MCP.get("subagent")).toBe("mcp__subagent__run");
+		} finally {
+			vi.unstubAllEnvs();
+			rmSync(tempParent, { recursive: true, force: true });
+		}
 	});
 
 	it("does not register alias tools when no companion source tools are loaded", async () => {
@@ -893,14 +927,18 @@ describe("pi-claude-code-use", () => {
 	// ----------------------------------------------------------------
 
 	describe("user-defined tool aliases", () => {
-		const testDir = join(process.cwd(), "test-cc-use-tmp");
-		const agentDir = join(testDir, "agent");
-		const projectDir = join(testDir, "project");
-		const globalConfigPath = join(agentDir, "extensions", "pi-claude-code-use.json");
-		const projectConfigPath = join(projectDir, ".pi", "extensions", "pi-claude-code-use.json");
+		let testDir: string;
+		let agentDir: string;
+		let projectDir: string;
+		let globalConfigPath: string;
+		let projectConfigPath: string;
 
 		beforeEach(() => {
-			if (existsSync(testDir)) rmSync(testDir, { recursive: true });
+			testDir = mkdtempSync(join(tmpdir(), "pi-claude-code-use-"));
+			agentDir = join(testDir, "agent");
+			projectDir = join(testDir, "project");
+			globalConfigPath = join(agentDir, "extensions", "pi-claude-code-use.json");
+			projectConfigPath = join(projectDir, ".pi", "extensions", "pi-claude-code-use.json");
 			mkdirSync(dirname(globalConfigPath), { recursive: true });
 			mkdirSync(dirname(projectConfigPath), { recursive: true });
 		});
@@ -954,6 +992,54 @@ describe("pi-claude-code-use", () => {
 			writeFileSync(globalConfigPath, JSON.stringify({ toolAliases: [["only_global", "mcp__g__one"]] }));
 			writeFileSync(projectConfigPath, JSON.stringify({ toolAliases: [] }));
 			expect(load()).toEqual([]);
+		});
+
+		it("removes stale user aliases when project config changes", async () => {
+			const pi = createMockPi();
+
+			writeFileSync(projectConfigPath, JSON.stringify({ toolAliases: [["subagent", "mcp__subagent__run"]] }));
+			await _test.registerMcpAliases(pi as unknown as ExtensionAPI, {
+				cwd: projectDir,
+				agentDir,
+			});
+
+			const withAlias = _test.transformPayload(
+				{
+					tools: [{ name: "subagent" }, { name: "mcp__subagent__run" }],
+					tool_choice: { type: "tool", name: "subagent" },
+					messages: [{ role: "assistant", content: [{ type: "tool_use", name: "subagent" }] }],
+				},
+				false,
+			);
+			expect(withAlias.tool_choice).toEqual({ type: "tool", name: "mcp__subagent__run" });
+			expect((withAlias.messages as Array<{ content: Array<{ name: string }> }>)[0]?.content[0]?.name).toBe(
+				"mcp__subagent__run",
+			);
+
+			writeFileSync(projectConfigPath, JSON.stringify({ toolAliases: [] }));
+			await _test.registerMcpAliases(pi as unknown as ExtensionAPI, {
+				cwd: projectDir,
+				agentDir,
+			});
+
+			const withoutAlias = _test.transformPayload(
+				{
+					tools: [{ name: "subagent" }, { name: "mcp__subagent__run" }],
+					tool_choice: { type: "tool", name: "subagent" },
+					messages: [{ role: "assistant", content: [{ type: "tool_use", name: "subagent" }] }],
+				},
+				false,
+			);
+			expect(withoutAlias.tool_choice).toBeUndefined();
+			expect((withoutAlias.messages as Array<{ content: Array<{ name: string }> }>)[0]?.content[0]?.name).toBe(
+				"subagent",
+			);
+
+			_test.registeredMcpAliases.add("mcp__subagent__run");
+			pi.getActiveTools.mockReturnValue(["subagent"]);
+			pi.getAllTools.mockReturnValue([mockTool("subagent"), mockTool("mcp__subagent__run")]);
+			_test.syncAliasActivation(pi as unknown as ExtensionAPI, true);
+			expect(pi.setActiveTools).not.toHaveBeenCalled();
 		});
 
 		it("registers an MCP alias for a user-configured flat tool using its sourceInfo path", async () => {

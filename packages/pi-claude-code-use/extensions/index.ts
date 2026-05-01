@@ -53,14 +53,17 @@ const CORE_TOOL_NAMES = new Set([
 	"websearch",
 ]);
 
-/** Flat companion tool name → MCP-style alias. */
-const FLAT_TO_MCP = new Map<string, string>([
+/** Built-in flat companion tool name → MCP-style alias entries. */
+const BUILTIN_FLAT_TO_MCP_ENTRIES = [
 	["web_search_exa", "mcp__exa__web_search"],
 	["get_code_context_exa", "mcp__exa__get_code_context"],
 	["firecrawl_scrape", "mcp__firecrawl__scrape"],
 	["firecrawl_map", "mcp__firecrawl__map"],
 	["firecrawl_search", "mcp__firecrawl__search"],
-]);
+] as const;
+
+/** Flat tool name → MCP-style alias. Rebuilt from built-ins plus current user config. */
+const FLAT_TO_MCP = new Map<string, string>(BUILTIN_FLAT_TO_MCP_ENTRIES);
 
 /** Known companion extensions and the tools they provide. */
 const COMPANIONS: CompanionSpec[] = [
@@ -147,6 +150,16 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 function lower(name: string | undefined): string {
 	return (name ?? "").trim().toLowerCase();
+}
+
+function refreshAliasMap(userToolAliases: ToolAliasPair[]): void {
+	FLAT_TO_MCP.clear();
+	for (const [flat, mcp] of BUILTIN_FLAT_TO_MCP_ENTRIES) {
+		FLAT_TO_MCP.set(lower(flat), mcp);
+	}
+	for (const [flat, mcp] of userToolAliases) {
+		FLAT_TO_MCP.set(lower(flat), mcp);
+	}
 }
 
 // ============================================================================
@@ -529,7 +542,7 @@ async function registerMcpAliases(pi: ExtensionAPI, opts: { cwd?: string; agentD
 	// Pick up user-defined tool aliases from settings.json so subsequent payload
 	// transforms (filterAndRemapTools, remapToolChoice, message rewriting) see them.
 	const userToolAliases = loadToolAliases(opts.cwd ?? process.cwd(), opts.agentDir);
-	for (const [flat, mcp] of userToolAliases) FLAT_TO_MCP.set(lower(flat), mcp);
+	refreshAliasMap(userToolAliases);
 
 	const allTools = pi.getAllTools();
 	const toolIndex = new Map<string, ToolInfo>();
@@ -656,12 +669,12 @@ function syncAliasActivation(pi: ExtensionAPI, enableAliases: boolean): void {
 // ============================================================================
 
 export default async function piClaudeCodeUse(pi: ExtensionAPI): Promise<void> {
-	pi.on("session_start", async () => {
-		await registerMcpAliases(pi);
+	pi.on("session_start", async (_event, ctx) => {
+		await registerMcpAliases(pi, { cwd: ctx.cwd });
 	});
 
 	pi.on("before_agent_start", async (_event, ctx) => {
-		await registerMcpAliases(pi);
+		await registerMcpAliases(pi, { cwd: ctx.cwd });
 		const model = ctx.model;
 		const isOAuth = model?.provider === "anthropic" && ctx.modelRegistry.isUsingOAuth(model);
 		syncAliasActivation(pi, isOAuth);
@@ -703,6 +716,7 @@ export const _test = {
 	isPlainObject,
 	loadToolAliases,
 	lower,
+	refreshAliasMap,
 	registerMcpAliases,
 	registeredMcpAliases,
 	remapMessageToolNames,
