@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.12] - 2026-05-01
+
+### Changed
+- Replaced the hardcoded `hf:moonshotai/Kimi-K2.5` fallback with `hf:moonshotai/Kimi-K2.6`.
+- Updated Kimi K2.6 fallback pricing to match the Synthetic catalog: $0.95 input / $4.00 output per million tokens.
+- Updated extension usage comments and fallback tests for the Kimi K2.6 default.
+
+### Fixed
+- Corrected the fallback Kimi lineup to match the intended hardcoded defaults by removing the nonexistent `hf:nvidia/Kimi-K2.6-NVFP4` fallback.
+
+### Removed
+- Removed `hf:nvidia/Kimi-K2.5-NVFP4` from hardcoded fallback models. It can still appear from live Synthetic model discovery when available.
+
 ## [1.1.11] - 2026-04-12
 
 ### Added

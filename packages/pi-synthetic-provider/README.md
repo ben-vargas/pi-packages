@@ -7,7 +7,7 @@
 - **Dynamic model discovery** -- models fetched live from the Synthetic API at each session start
 - **OpenAI Completions API** -- reuses pi's built-in streaming, no custom implementation
 - **Tool calling** -- full support via OpenAI-compatible tool use
-- **Vision support** -- image input for models that support it (e.g., Kimi-K2.5)
+- **Vision support** -- image input for models that support it (e.g., Kimi-K2.6)
 - **Reasoning support** -- extended thinking for reasoning-capable models
 - **Cost tracking** -- accurate per-token pricing parsed from the API
 - **Graceful degradation** -- fallback model list if the API is unreachable
@@ -49,7 +49,7 @@ Add to `~/.pi/agent/auth.json`:
 ### Option 3: Runtime CLI Flag
 
 ```bash
-pi --model synthetic/hf:moonshotai/Kimi-K2.5 --api-key syn_your_key_here
+pi --model synthetic/hf:moonshotai/Kimi-K2.6 --api-key syn_your_key_here
 ```
 
 ## Usage
@@ -59,10 +59,10 @@ pi --model synthetic/hf:moonshotai/Kimi-K2.5 --api-key syn_your_key_here
 pi /model
 
 # Direct model selection
-pi --model synthetic/hf:moonshotai/Kimi-K2.5
+pi --model synthetic/hf:moonshotai/Kimi-K2.6
 
 # Or use provider + model flags separately
-pi --provider synthetic --model hf:moonshotai/Kimi-K2.5
+pi --provider synthetic --model hf:moonshotai/Kimi-K2.6
 ```
 
 ### Extension Command
@@ -76,8 +76,7 @@ Models are fetched at startup from the [Synthetic models endpoint](https://dev.s
 
 | Model | ID | Reasoning | Vision | Context | Max Output |
 |-------|-----|-----------|--------|---------|------------|
-| **Kimi K2.5** | `hf:moonshotai/Kimi-K2.5` | Yes | Yes | 262K | 65K |
-| **Kimi K2.5 NVFP4** | `hf:nvidia/Kimi-K2.5-NVFP4` | Yes | Yes | 262K | 65K |
+| **Kimi K2.6** | `hf:moonshotai/Kimi-K2.6` | Yes | Yes | 262K | 65K |
 | **MiniMax M2.5** | `hf:MiniMaxAI/MiniMax-M2.5` | Yes | No | 191K | 65K |
 | **Nemotron 3 Super 120B** | `hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4` | Yes | No | 262K | 65K |
 | **GLM 5.1** | `hf:zai-org/GLM-5.1` | Yes | No | 196K | 65K |

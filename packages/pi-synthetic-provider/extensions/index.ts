@@ -39,7 +39,6 @@
  *
  * Supported Models (as of 2026-05-01):
  * - hf:moonshotai/Kimi-K2.6 (reasoning + vision)
- * - hf:nvidia/Kimi-K2.6-NVFP4 (reasoning + vision, NVIDIA FP4 variant)
  * - hf:MiniMaxAI/MiniMax-M2.5 (reasoning)
  * - hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4 (reasoning)
  * - hf:zai-org/GLM-5.1 (reasoning)
