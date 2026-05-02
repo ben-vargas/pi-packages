@@ -86,10 +86,13 @@ To register MCP-style aliases for flat-named tools from other installed extensio
 ```json
 {
   "toolAliases": [
-    ["subagent", "mcp__extension__subagent"]
+    ["subagent", "mcp__subagent__run"],
+    ["linear_search", "mcp__linear__search"]
   ]
 }
 ```
+
+Each entry maps an existing flat Pi tool name to the MCP-style name Anthropic should see. Use the flat tool name exactly as the source extension registers it; choose an MCP alias in the form `mcp__<namespace>__<tool>`.
 
 The project file replaces the global file as a whole. Set `"toolAliases": []` in the project file to disable inherited globals.
 
