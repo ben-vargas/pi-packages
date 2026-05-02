@@ -79,6 +79,23 @@ The extension identifies companion tools by matching `sourceInfo` metadata that 
 
 Once a companion tool is identified, its extension factory is loaded via jiti into a capture shim to obtain the full tool definition, which is then re-registered under the MCP alias name.
 
+## User-Defined Tool Aliases
+
+To register MCP-style aliases for flat-named tools from other installed extensions, create `~/.pi/agent/extensions/pi-claude-code-use.json` (global) or `<project>/.pi/extensions/pi-claude-code-use.json` (project). Schema:
+
+```json
+{
+  "toolAliases": [
+    ["subagent", "mcp__subagent__run"],
+    ["linear_search", "mcp__linear__search"]
+  ]
+}
+```
+
+Each entry maps an existing flat Pi tool name to the MCP-style name Anthropic should see. Use the flat tool name exactly as the source extension registers it; choose an MCP alias in the form `mcp__<namespace>__<tool>`.
+
+The project file replaces the global file as a whole. Set `"toolAliases": []` in the project file to disable inherited globals.
+
 ## Core Tools Allowlist
 
 The following tool names always pass through filtering (case-insensitive). This list mirrors Pi core's `claudeCodeTools` in `packages/ai/src/providers/anthropic.ts`:
