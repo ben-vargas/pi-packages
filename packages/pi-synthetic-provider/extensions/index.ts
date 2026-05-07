@@ -50,7 +50,7 @@
  *   curl -s https://api.synthetic.new/openai/v1/models | jq '.data[] | select(.always_on == true) | {id, name, provider, context_length, max_output_length, pricing}'
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { getSyntheticApiKey, hasSyntheticApiKey } from "./auth.js";
 import { registerSyntheticModelsCommand } from "./commands/synthetic-models.js";
 import { registerSyntheticQuotaCommand } from "./commands/synthetic-quota.js";

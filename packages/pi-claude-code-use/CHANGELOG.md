@@ -7,6 +7,12 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-05-07
+
+### Changed
+- Updated pi SDK imports and peer dependencies from `@mariozechner/*` to `@earendil-works/*` for pi 0.74.0.
+- Kept compatibility aliases for dynamically loaded companion extensions that still import the old pi SDK namespace.
+
 ## [1.0.2] - 2026-05-02
 
 ### Added

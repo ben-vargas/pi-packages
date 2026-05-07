@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.13] - 2026-05-07
+
+### Changed
+- Updated pi SDK imports and peer dependency from `@mariozechner/*` to `@earendil-works/*` for pi 0.74.0.
+
 ## [1.1.12] - 2026-05-01
 
 ### Changed

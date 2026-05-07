@@ -1,6 +1,6 @@
 {
   "name": "@benvargas/pi-openai-verbosity",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Per-model OpenAI Codex text verbosity overrides for pi",
   "keywords": [
     "pi",
@@ -28,7 +28,7 @@
     ]
   },
   "peerDependencies": {
-    "@mariozechner/pi-coding-agent": ">=0.57.0"
+    "@earendil-works/pi-coding-agent": ">=0.74.0"
   },
   "repository": {
     "type": "git",

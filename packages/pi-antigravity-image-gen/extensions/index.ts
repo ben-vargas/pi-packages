@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const DEPRECATION_MESSAGE =
 	"[pi-antigravity-image-gen] Deprecated and disabled: Google has started banning accounts that use third-party Antigravity harnesses. This package no longer registers image-generation tools.";

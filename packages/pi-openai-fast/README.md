@@ -4,7 +4,7 @@
 
 This extension does not change the model, thinking level, tools, or prompts. It only adds `service_tier=priority` to provider requests when fast mode is active and the current model matches the configured supported-model list.
 
-Requires pi `0.57.0` or newer.
+Requires pi `0.74.0` or newer.
 
 ## Install
 

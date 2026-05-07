@@ -1,6 +1,6 @@
 {
   "name": "@benvargas/pi-ancestor-discovery",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Recursive ancestor discovery for pi resources (skills, prompts, themes)",
   "keywords": [
     "pi",
@@ -26,7 +26,7 @@
     ]
   },
   "peerDependencies": {
-    "@mariozechner/pi-coding-agent": "*"
+    "@earendil-works/pi-coding-agent": ">=0.74.0"
   },
   "repository": {
     "type": "git",
