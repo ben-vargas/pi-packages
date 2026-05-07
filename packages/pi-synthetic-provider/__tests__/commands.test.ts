@@ -1,10 +1,10 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerSyntheticModelsCommand } from "../extensions/commands/synthetic-models.js";
 import { registerSyntheticQuotaCommand } from "../extensions/commands/synthetic-quota.js";
 
 // ---------------------------------------------------------------------------
-// Module-level mock for @mariozechner/pi-tui
+// Module-level mock for @earendil-works/pi-tui
 // Captures SelectList instances so tests can trigger onSelect / onCancel.
 // ---------------------------------------------------------------------------
 
@@ -19,8 +19,8 @@ interface MockSelectList {
 
 let lastSelectList: MockSelectList | null = null;
 
-vi.mock("@mariozechner/pi-tui", async (importOriginal) => {
-	const original = await importOriginal<typeof import("@mariozechner/pi-tui")>();
+vi.mock("@earendil-works/pi-tui", async (importOriginal) => {
+	const original = await importOriginal<typeof import("@earendil-works/pi-tui")>();
 
 	class MockBox {
 		addChild = vi.fn();
@@ -58,9 +58,9 @@ vi.mock("@mariozechner/pi-tui", async (importOriginal) => {
 	};
 });
 
-// Also mock DynamicBorder from @mariozechner/pi-coding-agent
-vi.mock("@mariozechner/pi-coding-agent", async (importOriginal) => {
-	const original = await importOriginal<typeof import("@mariozechner/pi-coding-agent")>();
+// Also mock DynamicBorder from @earendil-works/pi-coding-agent
+vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => {
+	const original = await importOriginal<typeof import("@earendil-works/pi-coding-agent")>();
 	class MockDynamicBorder {
 		render = vi.fn().mockReturnValue([]);
 		invalidate = vi.fn();

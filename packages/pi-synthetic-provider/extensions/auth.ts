@@ -2,7 +2,7 @@
  * API key resolution logic for the Synthetic provider.
  */
 
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 /**
  * Check if Synthetic API key is available from any source.

@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import piClaudeCodeUse, { _test } from "../extensions/index.js";
 
@@ -869,8 +869,8 @@ describe("pi-claude-code-use", () => {
 			writeFileSync(
 				join(extDir, "index.js"),
 				[
-					'import { StringEnum } from "@mariozechner/pi-ai";',
-					'import { DEFAULT_MAX_BYTES } from "@mariozechner/pi-coding-agent";',
+					'import { StringEnum } from "@earendil-works/pi-ai";',
+					'import { DEFAULT_MAX_BYTES } from "@earendil-works/pi-coding-agent";',
 					'import { Type } from "typebox";',
 					"const schema = Type.Object({ q: StringEnum(['web']) });",
 					"export default function companion(pi) {",

@@ -26,7 +26,7 @@ That upstream change addresses the original `gpt-5.5` issue, but it also means p
 This extension now provides the missing user-facing control: per-slug verbosity settings for pi's
 `openai-codex` provider.
 
-Requires pi `0.57.0` or newer.
+Requires pi `0.74.0` or newer.
 
 ## What It Does
 

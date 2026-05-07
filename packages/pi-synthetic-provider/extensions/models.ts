@@ -2,7 +2,7 @@
  * Model fetching and fallback data for the Synthetic provider.
  */
 
-import type { ProviderModelConfig } from "@mariozechner/pi-coding-agent";
+import type { ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import { SYNTHETIC_COMPAT, SYNTHETIC_MODELS_ENDPOINT } from "./config.js";
 import { parsePrice } from "./formatting.js";
 import type { SyntheticModelsResponse } from "./types.js";

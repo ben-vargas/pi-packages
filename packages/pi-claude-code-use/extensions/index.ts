@@ -1,12 +1,12 @@
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import * as piAgentCoreModule from "@earendil-works/pi-agent-core";
+import * as piAiModule from "@earendil-works/pi-ai";
+import * as piAiOauthModule from "@earendil-works/pi-ai/oauth";
+import * as piCodingAgentModule from "@earendil-works/pi-coding-agent";
+import { type ExtensionAPI, getAgentDir } from "@earendil-works/pi-coding-agent";
+import * as piTuiModule from "@earendil-works/pi-tui";
 import { createJiti } from "@mariozechner/jiti";
-import * as piAgentCoreModule from "@mariozechner/pi-agent-core";
-import * as piAiModule from "@mariozechner/pi-ai";
-import * as piAiOauthModule from "@mariozechner/pi-ai/oauth";
-import * as piCodingAgentModule from "@mariozechner/pi-coding-agent";
-import { type ExtensionAPI, getAgentDir } from "@mariozechner/pi-coding-agent";
-import * as piTuiModule from "@mariozechner/pi-tui";
 import * as typeboxModule from "typebox";
 import * as typeboxCompileModule from "typebox/compile";
 import * as typeboxValueModule from "typebox/value";
@@ -415,6 +415,11 @@ function getJitiLoader() {
 			moduleCache: false,
 			tryNative: false,
 			virtualModules: {
+				"@earendil-works/pi-agent-core": piAgentCoreModule,
+				"@earendil-works/pi-ai": piAiModule,
+				"@earendil-works/pi-ai/oauth": piAiOauthModule,
+				"@earendil-works/pi-coding-agent": piCodingAgentModule,
+				"@earendil-works/pi-tui": piTuiModule,
 				"@mariozechner/pi-agent-core": piAgentCoreModule,
 				"@mariozechner/pi-ai": piAiModule,
 				"@mariozechner/pi-ai/oauth": piAiOauthModule,

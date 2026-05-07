@@ -3,8 +3,16 @@
  * Displays all available Synthetic models with pricing and capabilities in an interactive TUI overlay.
  */
 
-import { DynamicBorder, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Box, Container, type SelectItem, SelectList, type SelectListTheme, Spacer, Text } from "@mariozechner/pi-tui";
+import { DynamicBorder, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import {
+	Box,
+	Container,
+	type SelectItem,
+	SelectList,
+	type SelectListTheme,
+	Spacer,
+	Text,
+} from "@earendil-works/pi-tui";
 import { getSyntheticApiKey } from "../auth.js";
 import { SYNTHETIC_MODELS_ENDPOINT } from "../config.js";
 import {

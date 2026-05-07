@@ -3,8 +3,8 @@
  * Displays current API usage quotas and limits in a TUI overlay.
  */
 
-import { DynamicBorder, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Box, Container, matchesKey, Spacer, Text } from "@mariozechner/pi-tui";
+import { DynamicBorder, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Box, Container, matchesKey, Spacer, Text } from "@earendil-works/pi-tui";
 import { getSyntheticApiKey } from "../auth.js";
 import {
 	buildProgressBar,

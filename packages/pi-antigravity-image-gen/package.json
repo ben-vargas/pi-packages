@@ -1,6 +1,6 @@
 {
   "name": "@benvargas/pi-antigravity-image-gen",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Deprecated Google Antigravity image generation extension for pi",
   "keywords": [
     "pi",
@@ -27,7 +27,7 @@
     ]
   },
   "peerDependencies": {
-    "@mariozechner/pi-coding-agent": "*"
+    "@earendil-works/pi-coding-agent": ">=0.74.0"
   },
   "repository": {
     "type": "git",

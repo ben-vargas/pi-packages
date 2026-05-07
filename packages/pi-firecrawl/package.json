@@ -1,6 +1,6 @@
 {
   "name": "@benvargas/pi-firecrawl",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Firecrawl tools for pi - Web scraping, crawling, and data extraction via Firecrawl's REST API",
   "keywords": [
     "pi",
@@ -25,8 +25,8 @@
     ]
   },
   "peerDependencies": {
-    "@mariozechner/pi-ai": "*",
-    "@mariozechner/pi-coding-agent": "*",
+    "@earendil-works/pi-ai": ">=0.74.0",
+    "@earendil-works/pi-coding-agent": ">=0.74.0",
     "typebox": "*"
   },
   "repository": {

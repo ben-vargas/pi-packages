@@ -1,6 +1,6 @@
 {
   "name": "@benvargas/pi-claude-code-use",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Patch Anthropic OAuth payloads and companion tools for Claude Code-style subscription use",
   "keywords": [
     "pi",
@@ -28,10 +28,10 @@
     "@mariozechner/jiti": "^2.6.5"
   },
   "peerDependencies": {
-    "@mariozechner/pi-agent-core": "*",
-    "@mariozechner/pi-ai": "*",
-    "@mariozechner/pi-coding-agent": "*",
-    "@mariozechner/pi-tui": "*",
+    "@earendil-works/pi-agent-core": ">=0.74.0",
+    "@earendil-works/pi-ai": ">=0.74.0",
+    "@earendil-works/pi-coding-agent": ">=0.74.0",
+    "@earendil-works/pi-tui": ">=0.74.0",
     "typebox": "*"
   },
   "repository": {
