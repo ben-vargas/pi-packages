@@ -154,12 +154,56 @@ function lower(name: string | undefined): string {
 
 function refreshAliasMap(userToolAliases: ToolAliasPair[]): void {
 	FLAT_TO_MCP.clear();
+	MCP_TO_FLAT.clear();
 	for (const [flat, mcp] of BUILTIN_FLAT_TO_MCP_ENTRIES) {
 		FLAT_TO_MCP.set(lower(flat), mcp);
+		MCP_TO_FLAT.set(lower(mcp), flat);
 	}
 	for (const [flat, mcp] of userToolAliases) {
 		FLAT_TO_MCP.set(lower(flat), mcp);
+		MCP_TO_FLAT.set(lower(mcp), flat);
 	}
+}
+
+// Reverse map: MCP-prefixed alias (lowercase) → canonical flat name.
+// Populated alongside FLAT_TO_MCP. Used by `unaliasToolCalls`.
+const MCP_TO_FLAT = new Map<string, string>();
+for (const [flat, mcp] of BUILTIN_FLAT_TO_MCP_ENTRIES) {
+	MCP_TO_FLAT.set(lower(mcp), flat);
+}
+
+// Rewrite `name` on every block of `blockType` via `mapName`. Returns the
+// SAME array reference when nothing changed, so callers can use reference
+// equality to skip spreading the parent object.
+function remapBlockNames(
+	content: unknown[],
+	blockType: "tool_use" | "toolCall",
+	mapName: (name: string) => string | undefined,
+): unknown[] {
+	let changed = false;
+	const next = content.map((block) => {
+		if (!isPlainObject(block) || block.type !== blockType || typeof block.name !== "string") {
+			return block;
+		}
+		const newName = mapName(block.name);
+		if (!newName || newName === block.name) return block;
+		changed = true;
+		return { ...block, name: newName };
+	});
+	return changed ? next : content;
+}
+
+// Rewrite MCP-aliased `toolCall.name`s in the finalized assistant message
+// back to their canonical flat names. Fires from `message_end`, which runs
+// BEFORE the agent loop resolves which tool to invoke — so Pi looks up the
+// ORIGINAL extension's `execute` (preserving its closure-bound state) instead
+// of pi-claude-code-use's jiti-loaded duplicate. Inverse of `remapMessageToolNames`.
+function unaliasToolCalls(message: unknown): unknown {
+	if (!isPlainObject(message) || message.role !== "assistant" || !Array.isArray(message.content)) {
+		return undefined;
+	}
+	const content = remapBlockNames(message.content, "toolCall", (n) => MCP_TO_FLAT.get(lower(n)));
+	return content === message.content ? undefined : { ...message, content };
 }
 
 // ============================================================================
@@ -306,27 +350,14 @@ function remapMessageToolNames(messages: unknown[], survivingNames: Map<string, 
 	let anyChanged = false;
 	const result = messages.map((msg) => {
 		if (!isPlainObject(msg) || !Array.isArray(msg.content)) return msg;
-
-		let msgChanged = false;
-		const content = (msg.content as unknown[]).map((block) => {
-			if (!isPlainObject(block) || block.type !== "tool_use" || typeof block.name !== "string") {
-				return block;
-			}
-			const mcpAlias = FLAT_TO_MCP.get(lower(block.name));
-			if (mcpAlias && survivingNames.has(lower(mcpAlias))) {
-				msgChanged = true;
-				return { ...block, name: mcpAlias };
-			}
-			return block;
+		const content = remapBlockNames(msg.content, "tool_use", (n) => {
+			const alias = FLAT_TO_MCP.get(lower(n));
+			return alias && survivingNames.has(lower(alias)) ? alias : undefined;
 		});
-
-		if (msgChanged) {
-			anyChanged = true;
-			return { ...msg, content };
-		}
-		return msg;
+		if (content === msg.content) return msg;
+		anyChanged = true;
+		return { ...msg, content };
 	});
-
 	return anyChanged ? result : messages;
 }
 
@@ -685,6 +716,13 @@ export default async function piClaudeCodeUse(pi: ExtensionAPI): Promise<void> {
 		syncAliasActivation(pi, isOAuth);
 	});
 
+	// MCP alias → flat canonical name before the agent loop resolves the tool.
+	pi.on("message_end", async (event, _ctx) => {
+		const rewritten = unaliasToolCalls(event.message);
+		if (!rewritten) return undefined;
+		return { message: rewritten as typeof event.message };
+	});
+
 	pi.on("before_provider_request", (event, ctx) => {
 		const model = ctx.model;
 		if (!model || model.provider !== "anthropic" || !ctx.modelRegistry.isUsingOAuth(model)) {
@@ -708,6 +746,7 @@ export default async function piClaudeCodeUse(pi: ExtensionAPI): Promise<void> {
 
 export const _test = {
 	CORE_TOOL_NAMES,
+	MCP_TO_FLAT,
 	FLAT_TO_MCP,
 	COMPANIONS,
 	TOOL_TO_COMPANION,
@@ -733,4 +772,5 @@ export const _test = {
 	},
 	syncAliasActivation,
 	transformPayload,
+	unaliasToolCalls,
 };

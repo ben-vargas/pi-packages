@@ -1078,4 +1078,97 @@ describe("pi-claude-code-use", () => {
 			}
 		});
 	});
+
+	describe("unaliasToolCalls (message_end intercept)", () => {
+		it("rewrites a toolCall block's MCP-aliased name back to its flat counterpart", () => {
+			_test.refreshAliasMap([["run_chain", "mcp__chain__run_chain"]]);
+
+			const msg = {
+				role: "assistant",
+				content: [
+					{ type: "text", text: "running the chain" },
+					{ type: "toolCall", id: "call_1", name: "mcp__chain__run_chain", arguments: { task: "ping" } },
+				],
+			};
+
+			const out = _test.unaliasToolCalls(msg) as typeof msg | undefined;
+			expect(out).toBeDefined();
+			expect(out?.content[1]).toEqual({
+				type: "toolCall",
+				id: "call_1",
+				name: "run_chain",
+				arguments: { task: "ping" },
+			});
+			// Original message must not be mutated.
+			expect((msg.content[1] as { name: string }).name).toBe("mcp__chain__run_chain");
+		});
+
+		it("returns undefined when no toolCall name needs rewriting", () => {
+			_test.refreshAliasMap([["run_chain", "mcp__chain__run_chain"]]);
+
+			const msg = {
+				role: "assistant",
+				content: [
+					{ type: "text", text: "just text" },
+					{ type: "toolCall", id: "call_1", name: "run_chain", arguments: {} },
+				],
+			};
+
+			expect(_test.unaliasToolCalls(msg)).toBeUndefined();
+		});
+
+		it("ignores non-assistant messages", () => {
+			_test.refreshAliasMap([["run_chain", "mcp__chain__run_chain"]]);
+			expect(
+				_test.unaliasToolCalls({
+					role: "user",
+					content: [{ type: "toolCall", id: "x", name: "mcp__chain__run_chain", arguments: {} }],
+				}),
+			).toBeUndefined();
+		});
+
+		it("rewrites multiple toolCall blocks in one message", () => {
+			_test.refreshAliasMap([
+				["run_chain", "mcp__chain__run_chain"],
+				["query_experts", "mcp__pipi__query_experts"],
+			]);
+
+			const msg = {
+				role: "assistant",
+				content: [
+					{ type: "toolCall", id: "a", name: "mcp__chain__run_chain", arguments: {} },
+					{ type: "toolCall", id: "b", name: "mcp__pipi__query_experts", arguments: {} },
+					{ type: "toolCall", id: "c", name: "some_other_tool", arguments: {} },
+				],
+			};
+
+			const out = _test.unaliasToolCalls(msg) as typeof msg;
+			expect((out.content[0] as { name: string }).name).toBe("run_chain");
+			expect((out.content[1] as { name: string }).name).toBe("query_experts");
+			expect((out.content[2] as { name: string }).name).toBe("some_other_tool");
+		});
+
+		it("is wired up as a message_end handler", async () => {
+			_test.refreshAliasMap([["run_chain", "mcp__chain__run_chain"]]);
+
+			const pi = createMockPi();
+			pi.getAllTools.mockReturnValue([mockTool("run_chain")]);
+			await piClaudeCodeUse(pi as unknown as ExtensionAPI);
+
+			const handler = getRegisteredHandler(pi, "message_end");
+			expect(handler).toBeDefined();
+
+			const event = {
+				type: "message_end",
+				message: {
+					role: "assistant",
+					content: [{ type: "toolCall", id: "call_1", name: "mcp__chain__run_chain", arguments: { task: "ping" } }],
+				},
+			};
+
+			const result = (await handler(event, { cwd: "/tmp" })) as { message: { content: Array<{ name?: string }> } };
+			expect(result).toBeDefined();
+			expect(result.message.content[0].name).toBe("run_chain");
+		});
+	});
 });
