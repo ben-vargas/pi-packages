@@ -764,35 +764,34 @@ describe("pi-claude-code-use", () => {
 		pi.getAllTools.mockReturnValue([mockTool("my_tool"), mockTool("MCP__Foo__Bar")]);
 		pi.getActiveTools.mockReturnValue(["read", "my_tool"]);
 
-		// Enable: line 647 must recognize the registered alias despite mixed case
-		// and append it to active tools.
+		// Enable must recognize the registered alias despite mixed case and append
+		// it to active tools.
 		_test.syncAliasActivation(pi as unknown as ExtensionAPI, true);
 		expect(pi.setActiveTools).toHaveBeenCalledWith(["read", "my_tool", "MCP__Foo__Bar"]);
 
 		// Disable: removes the auto-activated mixed-case alias via the
 		// autoActivatedAliases set populated during the enable pass above.
-		// (This branch does not traverse lines 673/681; line 647 is the
-		// site this test locks in.)
+		// This branch locks in the auto-activation lookup.
 		pi.setActiveTools.mockClear();
 		pi.getActiveTools.mockReturnValue(["read", "my_tool", "MCP__Foo__Bar"]);
 		_test.syncAliasActivation(pi as unknown as ExtensionAPI, false);
 		expect(pi.setActiveTools).toHaveBeenCalledWith(["read", "my_tool"]);
 	});
 
-	it("preserves user-selected mixed-case mcp aliases on sync (line 673)", () => {
+	it("preserves user-selected mixed-case mcp aliases on sync", () => {
 		const pi = createMockPi();
 		_test.refreshAliasMap([["my_tool", "MCP__Foo__Bar"]]);
 		// registerMcpAlias normalizes via lower(mcpName) before adding; mirror that here.
 		_test.registeredMcpAliases.add("mcp__foo__bar");
 		pi.getAllTools.mockReturnValue([mockTool("my_tool"), mockTool("MCP__Foo__Bar")]);
 		// User manually selected the mixed-case alias via the tool picker.
-		// Flat counterpart is NOT active — auto-activation path (line 647) is skipped,
-		// forcing the preserve-user-selected path through line 673.
+		// Flat counterpart is NOT active, so this exercises the preserve
+		// user-selected path instead of auto-activation.
 		pi.getActiveTools.mockReturnValue(["read", "MCP__Foo__Bar"]);
 
 		_test.syncAliasActivation(pi as unknown as ExtensionAPI, true);
 
-		// With lower() at line 673, the alias is recognized as registered → preserved
+		// With lower(), the alias is recognized as registered → preserved
 		// → next === activeNames → setActiveTools is NOT called.
 		// Without lower(), the alias is dropped from activeRegistered → next = ["read"]
 		// → setActiveTools(["read"]) is called, silently breaking the user's selection.

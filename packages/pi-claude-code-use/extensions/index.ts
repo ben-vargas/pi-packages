@@ -15,10 +15,12 @@ import * as typeboxValueModule from "typebox/value";
 // Types
 // ============================================================================
 
+type ToolAliasPair = readonly [flatName: string, mcpName: string];
+
 interface CompanionSpec {
 	dirName: string;
 	packageName: string;
-	aliases: ReadonlyArray<readonly [flatName: string, mcpName: string]>;
+	aliases: ReadonlyArray<ToolAliasPair>;
 }
 
 type ToolRegistration = Parameters<ExtensionAPI["registerTool"]>[0];
@@ -53,18 +55,6 @@ const CORE_TOOL_NAMES = new Set([
 	"websearch",
 ]);
 
-/** Built-in flat companion tool name → MCP-style alias entries. */
-const BUILTIN_FLAT_TO_MCP_ENTRIES = [
-	["web_search_exa", "mcp__exa__web_search"],
-	["get_code_context_exa", "mcp__exa__get_code_context"],
-	["firecrawl_scrape", "mcp__firecrawl__scrape"],
-	["firecrawl_map", "mcp__firecrawl__map"],
-	["firecrawl_search", "mcp__firecrawl__search"],
-] as const;
-
-/** Flat tool name → MCP-style alias. Rebuilt from built-ins plus current user config. */
-const FLAT_TO_MCP = new Map<string, string>(BUILTIN_FLAT_TO_MCP_ENTRIES);
-
 /** Known companion extensions and the tools they provide. */
 const COMPANIONS: CompanionSpec[] = [
 	{
@@ -86,6 +76,12 @@ const COMPANIONS: CompanionSpec[] = [
 	},
 ];
 
+/** Built-in flat companion tool name → MCP-style alias entries, derived from companion metadata. */
+const COMPANION_ALIAS_ENTRIES: ReadonlyArray<ToolAliasPair> = COMPANIONS.flatMap((spec) => spec.aliases);
+
+/** Flat tool name → MCP-style alias. Rebuilt from built-in companions plus current user config. */
+const FLAT_TO_MCP = new Map<string, string>(COMPANION_ALIAS_ENTRIES);
+
 /** Reverse lookup: flat tool name → its companion spec. */
 const TOOL_TO_COMPANION = new Map<string, CompanionSpec>(
 	COMPANIONS.flatMap((spec) => spec.aliases.map(([flat]) => [flat, spec] as const)),
@@ -103,8 +99,6 @@ const TOOL_TO_COMPANION = new Map<string, CompanionSpec>(
 // ============================================================================
 
 const CONFIG_FILENAME = "pi-claude-code-use.json";
-
-type ToolAliasPair = readonly [flatName: string, mcpName: string];
 
 function readConfigFile(filePath: string): Record<string, unknown> {
 	if (!existsSync(filePath)) return {};
@@ -155,7 +149,7 @@ function lower(name: string | undefined): string {
 function refreshAliasMap(userToolAliases: ToolAliasPair[]): void {
 	FLAT_TO_MCP.clear();
 	MCP_TO_FLAT.clear();
-	for (const [flat, mcp] of BUILTIN_FLAT_TO_MCP_ENTRIES) {
+	for (const [flat, mcp] of COMPANION_ALIAS_ENTRIES) {
 		FLAT_TO_MCP.set(lower(flat), mcp);
 		MCP_TO_FLAT.set(lower(mcp), flat);
 	}
@@ -168,7 +162,7 @@ function refreshAliasMap(userToolAliases: ToolAliasPair[]): void {
 // Reverse map: MCP-prefixed alias (lowercase) → canonical flat name.
 // Populated alongside FLAT_TO_MCP. Used by `unaliasToolCalls`.
 const MCP_TO_FLAT = new Map<string, string>();
-for (const [flat, mcp] of BUILTIN_FLAT_TO_MCP_ENTRIES) {
+for (const [flat, mcp] of COMPANION_ALIAS_ENTRIES) {
 	MCP_TO_FLAT.set(lower(mcp), flat);
 }
 
@@ -437,8 +431,9 @@ function writeDebugLog(payload: unknown): void {
 // Companion alias registration (PRD §1.3)
 //
 // Discovers loaded companion extensions, captures their tool definitions via
-// a shim ExtensionAPI, and registers MCP-alias versions so the model can
-// invoke them under Claude Code-compatible names.
+// a shim ExtensionAPI, and registers MCP-alias versions so Anthropic sees
+// Claude Code-compatible tool names. Managed alias tool calls are rewritten
+// back to their flat source names at `message_end` before Pi resolves execution.
 // ============================================================================
 
 const registeredMcpAliases = new Set<string>();

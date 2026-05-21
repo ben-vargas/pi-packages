@@ -17,7 +17,8 @@ When Pi is using Anthropic OAuth, this extension intercepts outbound API request
 - **Companion tool remapping** -- renames known companion extension tools from their flat names to MCP-style aliases (e.g. `web_search_exa` becomes `mcp__exa__web_search`). Duplicate flat entries are removed after remapping.
 - **tool_choice remapping** -- if `tool_choice` references a flat companion name that was remapped, the reference is updated to the MCP alias. If it references a tool that was filtered out, `tool_choice` is removed from the payload.
 - **Message history rewriting** -- `tool_use` blocks in conversation history that reference flat companion names are rewritten to their MCP aliases so the model sees consistent tool names across the conversation.
-- **Companion alias registration** -- at session start and before each agent turn, discovers loaded companion extensions, captures their tool definitions via a jiti-based shim, and registers MCP-alias copies so the model can invoke them under Claude Code-compatible names.
+- **Companion alias registration** -- at session start and before each agent turn, discovers loaded companion extensions, captures their tool definitions via a jiti-based shim, and registers MCP-alias copies so Anthropic sees Claude Code-compatible names.
+- **Managed tool-call unaliasing** -- when the model calls an MCP alias registered by this extension, rewrites the finalized `toolCall` name back to the original flat tool name during `message_end`, before Pi resolves execution. Direct MCP tools from other extensions are left untouched.
 - **Alias activation tracking** -- auto-activates MCP aliases when their flat counterpart is active under Anthropic OAuth. Tracks provenance (auto-managed vs user-selected) so that disabling OAuth only removes auto-activated aliases, preserving any the user explicitly enabled.
 
 Non-OAuth Anthropic usage and non-Anthropic providers are left completely unchanged.
@@ -77,7 +78,7 @@ The extension identifies companion tools by matching `sourceInfo` metadata that 
 1. **baseDir match** -- if the tool's `sourceInfo.baseDir` directory name matches the companion's directory name (e.g. `pi-exa-mcp`).
 2. **Path match** -- if the tool's `sourceInfo.path` contains the companion's scoped package name (e.g. `@benvargas/pi-exa-mcp`) or directory name as a path segment. This handles npm installs, git clones, and monorepo layouts where `baseDir` points to the repo root rather than the individual package.
 
-Once a companion tool is identified, its extension factory is loaded via jiti into a capture shim to obtain the full tool definition, which is then re-registered under the MCP alias name.
+Once a companion tool is identified, its extension factory is loaded via jiti into a capture shim to obtain the full tool definition, which is then re-registered under the MCP alias name. Those alias copies are model-facing compatibility shims; when the assistant actually calls one of these managed aliases, `pi-claude-code-use` rewrites the finalized `toolCall` back to the original flat name before Pi executes the tool. This preserves the source extension's original `execute` closure and state.
 
 ## User-Defined Tool Aliases
 
@@ -94,6 +95,8 @@ To register MCP-style aliases for flat-named tools from other installed extensio
 
 Each entry maps an existing flat Pi tool name to the MCP-style name Anthropic should see. Use the flat tool name exactly as the source extension registers it; choose an MCP alias in the form `mcp__<namespace>__<tool>`.
 
+Aliases registered through this config are treated the same as the built-in companion aliases: Anthropic sees the MCP-style name, but managed alias calls are canonicalized back to the flat source tool before local execution. MCP-style tools that are provided directly by another extension are not rewritten unless `pi-claude-code-use` registered that same alias.
+
 The project file replaces the global file as a whole. Set `"toolAliases": []` in the project file to disable inherited globals.
 
 ## Core Tools Allowlist
@@ -102,7 +105,7 @@ The following tool names always pass through filtering (case-insensitive). This 
 
 `Read`, `Write`, `Edit`, `Bash`, `Grep`, `Glob`, `AskUserQuestion`, `EnterPlanMode`, `ExitPlanMode`, `KillShell`, `NotebookEdit`, `Skill`, `Task`, `TaskOutput`, `TodoWrite`, `WebFetch`, `WebSearch`
 
-Additionally, any tool with a `type` field (Anthropic-native tools like `web_search`) and any tool prefixed with `mcp__` always passes through.
+Additionally, any tool with a `type` field (Anthropic-native tools like `web_search`) and any tool prefixed with `mcp__` always passes through provider-request filtering. Direct MCP tools remain direct MCP tools; only aliases registered by `pi-claude-code-use` are rewritten back to flat names before local execution.
 
 ## Guidance For Extension Authors
 
