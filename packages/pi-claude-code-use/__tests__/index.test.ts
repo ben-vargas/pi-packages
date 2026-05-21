@@ -754,6 +754,51 @@ describe("pi-claude-code-use", () => {
 		expect(pi.setActiveTools).not.toHaveBeenCalled();
 	});
 
+	it("recognizes mixed-case mcp aliases from user config (case-insensitive registeredMcpAliases lookups)", () => {
+		const pi = createMockPi();
+		// refreshAliasMap stores the mcp value RAW (mixed-case), simulating a user
+		// who put ["my_tool", "MCP__Foo__Bar"] in their pi-claude-code-use.json.
+		_test.refreshAliasMap([["my_tool", "MCP__Foo__Bar"]]);
+		// registerMcpAlias normalizes via lower(mcpName) before adding; mirror that here.
+		_test.registeredMcpAliases.add("mcp__foo__bar");
+		pi.getAllTools.mockReturnValue([mockTool("my_tool"), mockTool("MCP__Foo__Bar")]);
+		pi.getActiveTools.mockReturnValue(["read", "my_tool"]);
+
+		// Enable: line 647 must recognize the registered alias despite mixed case
+		// and append it to active tools.
+		_test.syncAliasActivation(pi as unknown as ExtensionAPI, true);
+		expect(pi.setActiveTools).toHaveBeenCalledWith(["read", "my_tool", "MCP__Foo__Bar"]);
+
+		// Disable: removes the auto-activated mixed-case alias via the
+		// autoActivatedAliases set populated during the enable pass above.
+		// (This branch does not traverse lines 673/681; line 647 is the
+		// site this test locks in.)
+		pi.setActiveTools.mockClear();
+		pi.getActiveTools.mockReturnValue(["read", "my_tool", "MCP__Foo__Bar"]);
+		_test.syncAliasActivation(pi as unknown as ExtensionAPI, false);
+		expect(pi.setActiveTools).toHaveBeenCalledWith(["read", "my_tool"]);
+	});
+
+	it("preserves user-selected mixed-case mcp aliases on sync (line 673)", () => {
+		const pi = createMockPi();
+		_test.refreshAliasMap([["my_tool", "MCP__Foo__Bar"]]);
+		// registerMcpAlias normalizes via lower(mcpName) before adding; mirror that here.
+		_test.registeredMcpAliases.add("mcp__foo__bar");
+		pi.getAllTools.mockReturnValue([mockTool("my_tool"), mockTool("MCP__Foo__Bar")]);
+		// User manually selected the mixed-case alias via the tool picker.
+		// Flat counterpart is NOT active — auto-activation path (line 647) is skipped,
+		// forcing the preserve-user-selected path through line 673.
+		pi.getActiveTools.mockReturnValue(["read", "MCP__Foo__Bar"]);
+
+		_test.syncAliasActivation(pi as unknown as ExtensionAPI, true);
+
+		// With lower() at line 673, the alias is recognized as registered → preserved
+		// → next === activeNames → setActiveTools is NOT called.
+		// Without lower(), the alias is dropped from activeRegistered → next = ["read"]
+		// → setActiveTools(["read"]) is called, silently breaking the user's selection.
+		expect(pi.setActiveTools).not.toHaveBeenCalled();
+	});
+
 	// ----------------------------------------------------------------
 	// Capture shim
 	// ----------------------------------------------------------------
@@ -1082,6 +1127,7 @@ describe("pi-claude-code-use", () => {
 	describe("unaliasToolCalls (message_end intercept)", () => {
 		it("rewrites a toolCall block's MCP-aliased name back to its flat counterpart", () => {
 			_test.refreshAliasMap([["run_chain", "mcp__chain__run_chain"]]);
+			_test.registeredMcpAliases.add("mcp__chain__run_chain");
 
 			const msg = {
 				role: "assistant",
@@ -1132,6 +1178,8 @@ describe("pi-claude-code-use", () => {
 				["run_chain", "mcp__chain__run_chain"],
 				["query_experts", "mcp__pipi__query_experts"],
 			]);
+			_test.registeredMcpAliases.add("mcp__chain__run_chain");
+			_test.registeredMcpAliases.add("mcp__pipi__query_experts");
 
 			const msg = {
 				role: "assistant",
@@ -1150,6 +1198,7 @@ describe("pi-claude-code-use", () => {
 
 		it("is wired up as a message_end handler", async () => {
 			_test.refreshAliasMap([["run_chain", "mcp__chain__run_chain"]]);
+			_test.registeredMcpAliases.add("mcp__chain__run_chain");
 
 			const pi = createMockPi();
 			pi.getAllTools.mockReturnValue([mockTool("run_chain")]);
@@ -1169,6 +1218,82 @@ describe("pi-claude-code-use", () => {
 			const result = (await handler(event, { cwd: "/tmp" })) as { message: { content: Array<{ name?: string }> } };
 			expect(result).toBeDefined();
 			expect(result.message.content[0].name).toBe("run_chain");
+		});
+
+		it("leaves foreign mcp__ toolCalls untouched when registeredMcpAliases is empty", () => {
+			// refreshAliasMap re-seeds builtins (including mcp__exa__web_search → web_search_exa)
+			// but registeredMcpAliases is cleared by the top-level beforeEach and not populated here.
+			_test.refreshAliasMap([]);
+
+			const msg = {
+				role: "assistant",
+				content: [{ type: "toolCall", id: "x", name: "mcp__exa__web_search", arguments: {} }],
+			};
+
+			expect(_test.unaliasToolCalls(msg)).toBeUndefined();
+		});
+
+		it("rewrites mcp__exa__web_search → web_search_exa when registered by this extension", () => {
+			_test.refreshAliasMap([]);
+			_test.registeredMcpAliases.add("mcp__exa__web_search");
+
+			const msg = {
+				role: "assistant",
+				content: [{ type: "toolCall", id: "y", name: "mcp__exa__web_search", arguments: {} }],
+			};
+
+			const out = _test.unaliasToolCalls(msg) as typeof msg | undefined;
+			expect(out).toBeDefined();
+			expect((out?.content[0] as { name: string }).name).toBe("web_search_exa");
+		});
+
+		it("in a mixed message, only registered aliases are rewritten; foreign mcp__ names are preserved", () => {
+			_test.refreshAliasMap([["run_chain", "mcp__chain__run_chain"]]);
+			// Register only the user-defined alias; the builtin exa alias is NOT registered.
+			_test.registeredMcpAliases.add("mcp__chain__run_chain");
+
+			const msg = {
+				role: "assistant",
+				content: [
+					{ type: "toolCall", id: "a", name: "mcp__chain__run_chain", arguments: {} },
+					{ type: "toolCall", id: "b", name: "mcp__exa__web_search", arguments: {} },
+				],
+			};
+
+			const out = _test.unaliasToolCalls(msg) as typeof msg | undefined;
+			expect(out).toBeDefined();
+			expect((out?.content[0] as { name: string }).name).toBe("run_chain");
+			expect((out?.content[1] as { name: string }).name).toBe("mcp__exa__web_search");
+		});
+
+		it("leaves user-defined mcp__ toolCalls untouched when not registered by this extension", () => {
+			// Seed MCP_TO_FLAT with a user alias entry, but do NOT add it to
+			// registeredMcpAliases. Simulates a model emitting an alias name that
+			// another extension actually owns — this extension must not rewrite it.
+			_test.refreshAliasMap([["my_custom_tool", "mcp__custom__do_thing"]]);
+			_test.registeredMcpAliases.clear();
+
+			const msg = {
+				role: "assistant",
+				content: [{ type: "toolCall", id: "1", name: "mcp__custom__do_thing", arguments: {} }],
+			};
+
+			expect(_test.unaliasToolCalls(msg)).toBeUndefined();
+		});
+
+		it("rewrites mixed-case mcp__ toolCall names (case-insensitive lookup)", () => {
+			_test.refreshAliasMap([["run_chain", "mcp__chain__run_chain"]]);
+			_test.registeredMcpAliases.clear();
+			_test.registeredMcpAliases.add("mcp__chain__run_chain");
+
+			const msg = {
+				role: "assistant",
+				content: [{ type: "toolCall", id: "z", name: "MCP__Chain__Run_Chain", arguments: {} }],
+			};
+
+			const out = _test.unaliasToolCalls(msg) as typeof msg | undefined;
+			expect(out).toBeDefined();
+			expect((out?.content[0] as { name: string }).name).toBe("run_chain");
 		});
 	});
 });

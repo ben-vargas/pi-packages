@@ -198,11 +198,19 @@ function remapBlockNames(
 // BEFORE the agent loop resolves which tool to invoke — so Pi looks up the
 // ORIGINAL extension's `execute` (preserving its closure-bound state) instead
 // of pi-claude-code-use's jiti-loaded duplicate. Inverse of `remapMessageToolNames`.
+//
+// Gated on `registeredMcpAliases`: only rewrites names that this extension
+// explicitly registered, so foreign mcp__ tools (owned by other extensions)
+// pass through untouched.
 function unaliasToolCalls(message: unknown): unknown {
 	if (!isPlainObject(message) || message.role !== "assistant" || !Array.isArray(message.content)) {
 		return undefined;
 	}
-	const content = remapBlockNames(message.content, "toolCall", (n) => MCP_TO_FLAT.get(lower(n)));
+	const content = remapBlockNames(message.content, "toolCall", (n) => {
+		const flat = MCP_TO_FLAT.get(lower(n));
+		if (!flat || !registeredMcpAliases.has(lower(n))) return undefined;
+		return flat;
+	});
 	return content === message.content ? undefined : { ...message, content };
 }
 
@@ -591,7 +599,7 @@ async function registerMcpAliases(pi: ExtensionAPI, opts: { cwd?: string; agentD
 	// Loads the source extension via jiti and re-registers its captured tool
 	// definition under `mcpName`. Skips if already registered or unloadable.
 	const registerMcpAlias = async (tool: ToolInfo | undefined, flatName: string, mcpName: string): Promise<void> => {
-		if (!tool || registeredMcpAliases.has(mcpName) || knownNames.has(lower(mcpName))) return;
+		if (!tool || registeredMcpAliases.has(lower(mcpName)) || knownNames.has(lower(mcpName))) return;
 		// Prefer the extension file's directory (sourceInfo.path is the actual entry
 		// point). Fall back to baseDir, which can be the monorepo root.
 		const loadDir = tool.sourceInfo?.path ? dirname(tool.sourceInfo.path) : tool.sourceInfo?.baseDir;
@@ -603,7 +611,7 @@ async function registerMcpAliases(pi: ExtensionAPI, opts: { cwd?: string; agentD
 			name: mcpName,
 			label: def.label?.startsWith("MCP ") ? def.label : `MCP ${def.label ?? mcpName}`,
 		});
-		registeredMcpAliases.add(mcpName);
+		registeredMcpAliases.add(lower(mcpName));
 		knownNames.add(lower(mcpName));
 	};
 
@@ -636,7 +644,7 @@ function syncAliasActivation(pi: ExtensionAPI, enableAliases: boolean): void {
 		const activeLc = new Set(activeNames.map(lower));
 		const desiredAliases: string[] = [];
 		for (const [flat, mcp] of FLAT_TO_MCP) {
-			if (activeLc.has(flat) && allNames.has(mcp) && registeredMcpAliases.has(mcp)) {
+			if (activeLc.has(flat) && allNames.has(mcp) && registeredMcpAliases.has(lower(mcp))) {
 				desiredAliases.push(mcp);
 			}
 		}
@@ -662,7 +670,7 @@ function syncAliasActivation(pi: ExtensionAPI, enableAliases: boolean): void {
 		}
 
 		// Find registered aliases currently in the active list
-		const activeRegistered = activeNames.filter((n) => registeredMcpAliases.has(n) && allNames.has(n));
+		const activeRegistered = activeNames.filter((n) => registeredMcpAliases.has(lower(n)) && allNames.has(n));
 
 		// Per-alias provenance: an alias is "user-selected" if it's active and was NOT
 		// auto-activated by us. Only preserve those; auto-activated aliases get re-derived
@@ -670,7 +678,7 @@ function syncAliasActivation(pi: ExtensionAPI, enableAliases: boolean): void {
 		const preserved = activeRegistered.filter((n) => !autoActivatedAliases.has(n));
 
 		// Build result: non-alias tools + preserved user aliases + desired aliases
-		const nonAlias = activeNames.filter((n) => !registeredMcpAliases.has(n));
+		const nonAlias = activeNames.filter((n) => !registeredMcpAliases.has(lower(n)));
 		const next = Array.from(new Set([...nonAlias, ...preserved, ...desiredAliases]));
 
 		// Update auto-activation tracking: aliases we added this sync that weren't user-preserved
