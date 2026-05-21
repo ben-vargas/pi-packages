@@ -7,6 +7,12 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-05-21
+
+### Added
+- Rewrites managed MCP alias `toolCall` names back to their canonical flat tool names during `message_end`, so Pi executes the original extension tool rather than the captured alias duplicate.
+- Added regression coverage to ensure direct MCP tools from other extensions are not rewritten.
+
 ## [1.0.3] - 2026-05-07
 
 ### Changed

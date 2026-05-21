@@ -15,10 +15,12 @@ import * as typeboxValueModule from "typebox/value";
 // Types
 // ============================================================================
 
+type ToolAliasPair = readonly [flatName: string, mcpName: string];
+
 interface CompanionSpec {
 	dirName: string;
 	packageName: string;
-	aliases: ReadonlyArray<readonly [flatName: string, mcpName: string]>;
+	aliases: ReadonlyArray<ToolAliasPair>;
 }
 
 type ToolRegistration = Parameters<ExtensionAPI["registerTool"]>[0];
@@ -53,18 +55,6 @@ const CORE_TOOL_NAMES = new Set([
 	"websearch",
 ]);
 
-/** Built-in flat companion tool name → MCP-style alias entries. */
-const BUILTIN_FLAT_TO_MCP_ENTRIES = [
-	["web_search_exa", "mcp__exa__web_search"],
-	["get_code_context_exa", "mcp__exa__get_code_context"],
-	["firecrawl_scrape", "mcp__firecrawl__scrape"],
-	["firecrawl_map", "mcp__firecrawl__map"],
-	["firecrawl_search", "mcp__firecrawl__search"],
-] as const;
-
-/** Flat tool name → MCP-style alias. Rebuilt from built-ins plus current user config. */
-const FLAT_TO_MCP = new Map<string, string>(BUILTIN_FLAT_TO_MCP_ENTRIES);
-
 /** Known companion extensions and the tools they provide. */
 const COMPANIONS: CompanionSpec[] = [
 	{
@@ -86,6 +76,12 @@ const COMPANIONS: CompanionSpec[] = [
 	},
 ];
 
+/** Built-in flat companion tool name → MCP-style alias entries, derived from companion metadata. */
+const COMPANION_ALIAS_ENTRIES: ReadonlyArray<ToolAliasPair> = COMPANIONS.flatMap((spec) => spec.aliases);
+
+/** Flat tool name → MCP-style alias. Rebuilt from built-in companions plus current user config. */
+const FLAT_TO_MCP = new Map<string, string>(COMPANION_ALIAS_ENTRIES);
+
 /** Reverse lookup: flat tool name → its companion spec. */
 const TOOL_TO_COMPANION = new Map<string, CompanionSpec>(
 	COMPANIONS.flatMap((spec) => spec.aliases.map(([flat]) => [flat, spec] as const)),
@@ -103,8 +99,6 @@ const TOOL_TO_COMPANION = new Map<string, CompanionSpec>(
 // ============================================================================
 
 const CONFIG_FILENAME = "pi-claude-code-use.json";
-
-type ToolAliasPair = readonly [flatName: string, mcpName: string];
 
 function readConfigFile(filePath: string): Record<string, unknown> {
 	if (!existsSync(filePath)) return {};
@@ -154,12 +148,64 @@ function lower(name: string | undefined): string {
 
 function refreshAliasMap(userToolAliases: ToolAliasPair[]): void {
 	FLAT_TO_MCP.clear();
-	for (const [flat, mcp] of BUILTIN_FLAT_TO_MCP_ENTRIES) {
+	MCP_TO_FLAT.clear();
+	for (const [flat, mcp] of COMPANION_ALIAS_ENTRIES) {
 		FLAT_TO_MCP.set(lower(flat), mcp);
+		MCP_TO_FLAT.set(lower(mcp), flat);
 	}
 	for (const [flat, mcp] of userToolAliases) {
 		FLAT_TO_MCP.set(lower(flat), mcp);
+		MCP_TO_FLAT.set(lower(mcp), flat);
 	}
+}
+
+// Reverse map: MCP-prefixed alias (lowercase) → canonical flat name.
+// Populated alongside FLAT_TO_MCP. Used by `unaliasToolCalls`.
+const MCP_TO_FLAT = new Map<string, string>();
+for (const [flat, mcp] of COMPANION_ALIAS_ENTRIES) {
+	MCP_TO_FLAT.set(lower(mcp), flat);
+}
+
+// Rewrite `name` on every block of `blockType` via `mapName`. Returns the
+// SAME array reference when nothing changed, so callers can use reference
+// equality to skip spreading the parent object.
+function remapBlockNames(
+	content: unknown[],
+	blockType: "tool_use" | "toolCall",
+	mapName: (name: string) => string | undefined,
+): unknown[] {
+	let changed = false;
+	const next = content.map((block) => {
+		if (!isPlainObject(block) || block.type !== blockType || typeof block.name !== "string") {
+			return block;
+		}
+		const newName = mapName(block.name);
+		if (!newName || newName === block.name) return block;
+		changed = true;
+		return { ...block, name: newName };
+	});
+	return changed ? next : content;
+}
+
+// Rewrite MCP-aliased `toolCall.name`s in the finalized assistant message
+// back to their canonical flat names. Fires from `message_end`, which runs
+// BEFORE the agent loop resolves which tool to invoke — so Pi looks up the
+// ORIGINAL extension's `execute` (preserving its closure-bound state) instead
+// of pi-claude-code-use's jiti-loaded duplicate. Inverse of `remapMessageToolNames`.
+//
+// Gated on `registeredMcpAliases`: only rewrites names that this extension
+// explicitly registered, so foreign mcp__ tools (owned by other extensions)
+// pass through untouched.
+function unaliasToolCalls(message: unknown): unknown {
+	if (!isPlainObject(message) || message.role !== "assistant" || !Array.isArray(message.content)) {
+		return undefined;
+	}
+	const content = remapBlockNames(message.content, "toolCall", (n) => {
+		const flat = MCP_TO_FLAT.get(lower(n));
+		if (!flat || !registeredMcpAliases.has(lower(n))) return undefined;
+		return flat;
+	});
+	return content === message.content ? undefined : { ...message, content };
 }
 
 // ============================================================================
@@ -306,27 +352,14 @@ function remapMessageToolNames(messages: unknown[], survivingNames: Map<string, 
 	let anyChanged = false;
 	const result = messages.map((msg) => {
 		if (!isPlainObject(msg) || !Array.isArray(msg.content)) return msg;
-
-		let msgChanged = false;
-		const content = (msg.content as unknown[]).map((block) => {
-			if (!isPlainObject(block) || block.type !== "tool_use" || typeof block.name !== "string") {
-				return block;
-			}
-			const mcpAlias = FLAT_TO_MCP.get(lower(block.name));
-			if (mcpAlias && survivingNames.has(lower(mcpAlias))) {
-				msgChanged = true;
-				return { ...block, name: mcpAlias };
-			}
-			return block;
+		const content = remapBlockNames(msg.content, "tool_use", (n) => {
+			const alias = FLAT_TO_MCP.get(lower(n));
+			return alias && survivingNames.has(lower(alias)) ? alias : undefined;
 		});
-
-		if (msgChanged) {
-			anyChanged = true;
-			return { ...msg, content };
-		}
-		return msg;
+		if (content === msg.content) return msg;
+		anyChanged = true;
+		return { ...msg, content };
 	});
-
 	return anyChanged ? result : messages;
 }
 
@@ -398,8 +431,9 @@ function writeDebugLog(payload: unknown): void {
 // Companion alias registration (PRD §1.3)
 //
 // Discovers loaded companion extensions, captures their tool definitions via
-// a shim ExtensionAPI, and registers MCP-alias versions so the model can
-// invoke them under Claude Code-compatible names.
+// a shim ExtensionAPI, and registers MCP-alias versions so Anthropic sees
+// Claude Code-compatible tool names. Managed alias tool calls are rewritten
+// back to their flat source names at `message_end` before Pi resolves execution.
 // ============================================================================
 
 const registeredMcpAliases = new Set<string>();
@@ -560,7 +594,7 @@ async function registerMcpAliases(pi: ExtensionAPI, opts: { cwd?: string; agentD
 	// Loads the source extension via jiti and re-registers its captured tool
 	// definition under `mcpName`. Skips if already registered or unloadable.
 	const registerMcpAlias = async (tool: ToolInfo | undefined, flatName: string, mcpName: string): Promise<void> => {
-		if (!tool || registeredMcpAliases.has(mcpName) || knownNames.has(lower(mcpName))) return;
+		if (!tool || registeredMcpAliases.has(lower(mcpName)) || knownNames.has(lower(mcpName))) return;
 		// Prefer the extension file's directory (sourceInfo.path is the actual entry
 		// point). Fall back to baseDir, which can be the monorepo root.
 		const loadDir = tool.sourceInfo?.path ? dirname(tool.sourceInfo.path) : tool.sourceInfo?.baseDir;
@@ -572,7 +606,7 @@ async function registerMcpAliases(pi: ExtensionAPI, opts: { cwd?: string; agentD
 			name: mcpName,
 			label: def.label?.startsWith("MCP ") ? def.label : `MCP ${def.label ?? mcpName}`,
 		});
-		registeredMcpAliases.add(mcpName);
+		registeredMcpAliases.add(lower(mcpName));
 		knownNames.add(lower(mcpName));
 	};
 
@@ -605,7 +639,7 @@ function syncAliasActivation(pi: ExtensionAPI, enableAliases: boolean): void {
 		const activeLc = new Set(activeNames.map(lower));
 		const desiredAliases: string[] = [];
 		for (const [flat, mcp] of FLAT_TO_MCP) {
-			if (activeLc.has(flat) && allNames.has(mcp) && registeredMcpAliases.has(mcp)) {
+			if (activeLc.has(flat) && allNames.has(mcp) && registeredMcpAliases.has(lower(mcp))) {
 				desiredAliases.push(mcp);
 			}
 		}
@@ -631,7 +665,7 @@ function syncAliasActivation(pi: ExtensionAPI, enableAliases: boolean): void {
 		}
 
 		// Find registered aliases currently in the active list
-		const activeRegistered = activeNames.filter((n) => registeredMcpAliases.has(n) && allNames.has(n));
+		const activeRegistered = activeNames.filter((n) => registeredMcpAliases.has(lower(n)) && allNames.has(n));
 
 		// Per-alias provenance: an alias is "user-selected" if it's active and was NOT
 		// auto-activated by us. Only preserve those; auto-activated aliases get re-derived
@@ -639,7 +673,7 @@ function syncAliasActivation(pi: ExtensionAPI, enableAliases: boolean): void {
 		const preserved = activeRegistered.filter((n) => !autoActivatedAliases.has(n));
 
 		// Build result: non-alias tools + preserved user aliases + desired aliases
-		const nonAlias = activeNames.filter((n) => !registeredMcpAliases.has(n));
+		const nonAlias = activeNames.filter((n) => !registeredMcpAliases.has(lower(n)));
 		const next = Array.from(new Set([...nonAlias, ...preserved, ...desiredAliases]));
 
 		// Update auto-activation tracking: aliases we added this sync that weren't user-preserved
@@ -685,6 +719,13 @@ export default async function piClaudeCodeUse(pi: ExtensionAPI): Promise<void> {
 		syncAliasActivation(pi, isOAuth);
 	});
 
+	// MCP alias → flat canonical name before the agent loop resolves the tool.
+	pi.on("message_end", async (event, _ctx) => {
+		const rewritten = unaliasToolCalls(event.message);
+		if (!rewritten) return undefined;
+		return { message: rewritten as typeof event.message };
+	});
+
 	pi.on("before_provider_request", (event, ctx) => {
 		const model = ctx.model;
 		if (!model || model.provider !== "anthropic" || !ctx.modelRegistry.isUsingOAuth(model)) {
@@ -708,6 +749,7 @@ export default async function piClaudeCodeUse(pi: ExtensionAPI): Promise<void> {
 
 export const _test = {
 	CORE_TOOL_NAMES,
+	MCP_TO_FLAT,
 	FLAT_TO_MCP,
 	COMPANIONS,
 	TOOL_TO_COMPANION,
@@ -733,4 +775,5 @@ export const _test = {
 	},
 	syncAliasActivation,
 	transformPayload,
+	unaliasToolCalls,
 };
