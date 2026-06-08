@@ -1,6 +1,6 @@
 {
   "name": "@benvargas/pi-firecrawl",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Firecrawl tools for pi - Web scraping, crawling, and data extraction via Firecrawl's REST API",
   "keywords": [
     "pi",
