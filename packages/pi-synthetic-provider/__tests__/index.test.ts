@@ -16,7 +16,7 @@ describe("pi-synthetic-provider", () => {
 
 		expect(mockPi.registerProvider).toHaveBeenCalledWith(
 			"synthetic",
-			expect.objectContaining({ api: "openai-completions" }),
+			expect.objectContaining({ api: "openai-completions", apiKey: "$SYNTHETIC_API_KEY" }),
 		);
 		expect(mockPi.registerCommand).toHaveBeenCalledWith(
 			"synthetic-models",

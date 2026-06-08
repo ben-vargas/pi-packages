@@ -77,7 +77,7 @@ export default function (pi: ExtensionAPI) {
 	// are queued but never flushed, so the initial registration must happen here.
 	pi.registerProvider("synthetic", {
 		baseUrl: SYNTHETIC_API_BASE_URL,
-		apiKey: "SYNTHETIC_API_KEY",
+		apiKey: "$SYNTHETIC_API_KEY",
 		api: "openai-completions",
 		models: getFallbackModels(),
 	});
@@ -103,7 +103,7 @@ export default function (pi: ExtensionAPI) {
 		if (models.length > 0) {
 			pi.registerProvider("synthetic", {
 				baseUrl: SYNTHETIC_API_BASE_URL,
-				apiKey: "SYNTHETIC_API_KEY",
+				apiKey: "$SYNTHETIC_API_KEY",
 				api: "openai-completions",
 				models,
 			});

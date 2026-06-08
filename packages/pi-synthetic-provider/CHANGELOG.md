@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.14] - 2026-06-08
+
+### Fixed
+- Updated Synthetic provider registrations to reference `$SYNTHETIC_API_KEY` so pi resolves the environment variable instead of using a literal API key.
+
+### Changed
+- Raised the pi coding-agent peer dependency floor to 0.77.0.
+
 ## [1.1.13] - 2026-05-07
 
 ### Changed
