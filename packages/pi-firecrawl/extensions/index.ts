@@ -4,7 +4,7 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, truncateHead } from "@earendil-works/pi-coding-agent";
-import type { Static, TSchema } from "typebox";
+import type { Static, TObject } from "typebox";
 import { Type } from "typebox";
 
 const DEFAULT_BASE_URL = "https://api.firecrawl.dev";
@@ -498,7 +498,7 @@ export default function piFirecrawl(pi: ExtensionAPI) {
 			)
 		: null;
 
-	const registerTool = <TParams extends TSchema>(
+	const registerTool = <TParams extends TObject>(
 		name: "firecrawl_scrape" | "firecrawl_map" | "firecrawl_search",
 		label: string,
 		description: string,
