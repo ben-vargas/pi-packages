@@ -55,7 +55,7 @@ import { getSyntheticApiKey, hasSyntheticApiKey } from "./auth.js";
 import { registerSyntheticModelsCommand } from "./commands/synthetic-models.js";
 import { registerSyntheticQuotaCommand } from "./commands/synthetic-quota.js";
 import { AUTH_JSON_PATH, SYNTHETIC_API_BASE_URL } from "./config.js";
-import { fetchSyntheticModels, getFallbackModels } from "./models.js";
+import { fetchSyntheticModels } from "./models.js";
 
 // Re-export public API for tests and consumers
 export { parsePrice } from "./formatting.js";
