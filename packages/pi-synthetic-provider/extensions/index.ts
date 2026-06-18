@@ -70,8 +70,11 @@ export {
 	shouldDisplaySubscriptionQuota,
 } from "./quota.js";
 
-export default function (pi: ExtensionAPI) {
-	// Register provider synchronously with fallback models.
+export default async function (pi: ExtensionAPI) {
+	const startupModels = await fetchSyntheticModels();
+
+	// Register provider during extension loading with live models, falling back
+	// inside fetchSyntheticModels() if the API is unavailable.
 	// pi.registerProvider() during loading is queued and applied during
 	// runner.initialize(). Registrations in event handlers (e.g., session_start)
 	// are queued but never flushed, so the initial registration must happen here.
@@ -79,7 +82,7 @@ export default function (pi: ExtensionAPI) {
 		baseUrl: SYNTHETIC_API_BASE_URL,
 		apiKey: "$SYNTHETIC_API_KEY",
 		api: "openai-completions",
-		models: getFallbackModels(),
+		models: startupModels,
 	});
 
 	// After session starts, replace fallback models with live data from the API.
