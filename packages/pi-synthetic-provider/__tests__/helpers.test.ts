@@ -19,11 +19,15 @@ describe("pi-synthetic-provider helpers", () => {
 
 	it("provides fallback models", () => {
 		const models = getFallbackModels();
-		expect(models.length).toBeGreaterThan(0);
+		expect(models).toHaveLength(14);
+		expect(models.some((model) => model.id === "syn:large:text")).toBe(true);
+		expect(models.some((model) => model.id === "syn:small:vision")).toBe(true);
+		expect(models.some((model) => model.id === "hf:zai-org/GLM-5.2")).toBe(true);
 		expect(models.some((model) => model.id === "hf:moonshotai/Kimi-K2.6")).toBe(true);
 		expect(models.some((model) => model.id === "hf:nvidia/Kimi-K2.5-NVFP4")).toBe(false);
 		expect(models.some((model) => model.id === "hf:nvidia/Kimi-K2.6-NVFP4")).toBe(false);
-		expect(models.some((model) => model.id === "hf:MiniMaxAI/MiniMax-M2.5")).toBe(true);
+		expect(models.some((model) => model.id === "hf:MiniMaxAI/MiniMax-M2.5")).toBe(false);
+		expect(models.some((model) => model.id === "hf:MiniMaxAI/MiniMax-M3")).toBe(true);
 		expect(models.some((model) => model.id === "hf:zai-org/GLM-5.1")).toBe(true);
 		expect(models.some((model) => model.id === "hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4")).toBe(true);
 		for (const model of models) {

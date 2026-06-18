@@ -72,14 +72,24 @@ pi --provider synthetic --model hf:moonshotai/Kimi-K2.6
 
 ## Available Models
 
-Models are fetched at startup from the [Synthetic models endpoint](https://dev.synthetic.new/docs/api/models). If the API is unreachable, the provider falls back to the following hardcoded defaults:
+Models are fetched at startup from the [Synthetic models endpoint](https://dev.synthetic.new/docs/api/models). If the startup fetch fails, times out after three seconds, or returns no supported models, the provider falls back to the following hardcoded defaults:
 
 | Model | ID | Reasoning | Vision | Context | Max Output |
 |-------|-----|-----------|--------|---------|------------|
-| **Kimi K2.6** | `hf:moonshotai/Kimi-K2.6` | Yes | Yes | 262K | 65K |
-| **MiniMax M2.5** | `hf:MiniMaxAI/MiniMax-M2.5` | Yes | No | 191K | 65K |
-| **Nemotron 3 Super 120B** | `hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4` | Yes | No | 262K | 65K |
+| **Synthetic Large Text** | `syn:large:text` | Yes | No | 524K | 65K |
+| **Synthetic Small Text** | `syn:small:text` | Yes | No | 196K | 65K |
+| **Synthetic Large Vision** | `syn:large:vision` | Yes | Yes | 262K | 65K |
+| **Synthetic Small Vision** | `syn:small:vision` | Yes | Yes | 262K | 65K |
+| **GLM 5.2** | `hf:zai-org/GLM-5.2` | Yes | No | 524K | 65K |
 | **GLM 5.1** | `hf:zai-org/GLM-5.1` | Yes | No | 196K | 65K |
+| **Kimi K2.6** | `hf:moonshotai/Kimi-K2.6` | Yes | Yes | 262K | 65K |
+| **Qwen 3.6 27B** | `hf:Qwen/Qwen3.6-27B` | Yes | Yes | 262K | 65K |
+| **MiniMax M3** | `hf:MiniMaxAI/MiniMax-M3` | Yes | Yes | 524K | 65K |
+| **GLM 4.7 Flash** | `hf:zai-org/GLM-4.7-Flash` | Yes | No | 196K | 65K |
+| **Nemotron 3 Super 120B** | `hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4` | Yes | No | 262K | 65K |
+| **GLM 4.7** | `hf:zai-org/GLM-4.7` | Yes | No | 203K | 65K |
+| **GPT OSS 120B** | `hf:openai/gpt-oss-120b` | No | No | 131K | 32K |
+| **Qwen 3.5 397B A17B** | `hf:Qwen/Qwen3.5-397B-A17B` | No | Yes | 262K | 32K |
 
 Run `/synthetic-models` inside pi for the live catalog.
 
