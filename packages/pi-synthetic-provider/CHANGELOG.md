@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Added a three-second timeout for Synthetic model catalog fetches and fall back to hardcoded models when the live catalog is unavailable or filters to no supported models.
+
+### Changed
+- Refreshed the hardcoded Synthetic fallback catalog from the authenticated `/openai/v1/models` endpoint.
+
 ## [1.1.14] - 2026-06-08
 
 ### Fixed
