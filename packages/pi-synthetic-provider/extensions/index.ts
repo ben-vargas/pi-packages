@@ -85,7 +85,7 @@ export default async function (pi: ExtensionAPI) {
 		models: startupModels,
 	});
 
-	// After session starts, replace fallback models with live data from the API.
+	// After session starts, refresh models from the API and update the runtime provider registration.
 	// pi.registerProvider() now takes effect immediately after startup and also
 	// lets the runtime refresh the current model reference if the provider config
 	// changes beneath an already-selected model.
