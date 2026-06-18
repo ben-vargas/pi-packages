@@ -7,10 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.15] - 2026-06-18
+
 ### Fixed
+- Fetch and register Synthetic models during extension startup so saved defaults and enabled/scoped Synthetic models are available before pi resolves the startup model.
 - Added a three-second timeout for Synthetic model catalog fetches and fall back to hardcoded models when the live catalog is unavailable or filters to no supported models.
 
 ### Changed
+- Kept the session-start model refresh path aligned with startup registration by re-registering the provider with either live models or fallback models.
 - Refreshed the hardcoded Synthetic fallback catalog from the authenticated `/openai/v1/models` endpoint.
 
 ## [1.1.14] - 2026-06-08
