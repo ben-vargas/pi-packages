@@ -13,15 +13,19 @@ export const GLM_5_2_MODEL_ID = "hf:zai-org/GLM-5.2";
  * Per-model reasoning-effort support (https://github.com/ben-vargas/pi-packages/issues/21).
  *
  * GLM-5.2 accepts `reasoning_effort` with two values, "high" and "max" (its
- * server-side default is "max" when the field is omitted, so "off" sends
- * nothing). The map mirrors pi's built-in zai/glm-5.2 model, except we stay on
- * the adapter's default OpenAI thinking format: Synthetic's proxy documents
- * `reasoning_effort` only, not z.ai's `thinking: { type }` object.
+ * server-side default is "max" when the field is omitted). The map mirrors
+ * pi's built-in zai/glm-5.2 model, except we stay on the adapter's default
+ * OpenAI thinking format: Synthetic's proxy documents `reasoning_effort`
+ * only, not z.ai's `thinking: { type }` object.
  *
- * `minimal: null` hides that level from pi's thinking-level cycling — GLM has
- * no setting lighter than "high". Other catalog models keep the shared compat
- * (no effort field sent) until their native thinking parameters are verified
- * through Synthetic; an unsupported parameter fails the request with no retry.
+ * `null` hides a level from pi's thinking-level cycling. "off" is hidden
+ * because omitting the field would silently run GLM at its "max" default and
+ * Synthetic has no documented disable parameter; pi clamps "off" to "low",
+ * so the lightest selectable setting sends "high". "minimal" is hidden
+ * because GLM has nothing lighter than "high". Other catalog models keep the
+ * shared compat (no effort field sent) until their native thinking parameters
+ * are verified through Synthetic; an unsupported parameter fails the request
+ * with no retry.
  */
 const GLM_5_2_REASONING_OVERRIDES = {
 	compat: {
@@ -29,6 +33,7 @@ const GLM_5_2_REASONING_OVERRIDES = {
 		supportsReasoningEffort: true,
 	},
 	thinkingLevelMap: {
+		off: null,
 		minimal: null,
 		low: "high",
 		medium: "high",

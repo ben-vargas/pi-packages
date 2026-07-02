@@ -95,6 +95,7 @@ describe("pi-synthetic-provider", () => {
 		const glm = models.find((model) => model.id === "hf:zai-org/GLM-5.2");
 		expect(glm).toMatchObject({ compat: { supportsReasoningEffort: true } });
 		expect(glm?.thinkingLevelMap).toEqual({
+			off: null,
 			minimal: null,
 			low: "high",
 			medium: "high",
