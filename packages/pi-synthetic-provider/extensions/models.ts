@@ -26,8 +26,15 @@ export const GLM_5_2_MODEL_ID = "hf:zai-org/GLM-5.2";
  * shared compat (no effort field sent) until their native thinking parameters
  * are verified through Synthetic; an unsupported parameter fails the request
  * with no retry.
+ *
+ * `reasoning: true` is pinned because the live catalog only populates
+ * `supported_features` for Synthetic-hosted models and the adapter gates all
+ * effort emission on `model.reasoning`; without the pin, a live GLM-5.2 row
+ * missing that field would register with the override silently inert while
+ * the fallback path works.
  */
 const GLM_5_2_REASONING_OVERRIDES = {
+	reasoning: true,
 	compat: {
 		...SYNTHETIC_COMPAT,
 		supportsReasoningEffort: true,
@@ -40,9 +47,12 @@ const GLM_5_2_REASONING_OVERRIDES = {
 		high: "high",
 		xhigh: "max",
 	},
-} satisfies Pick<ProviderModelConfig, "compat" | "thinkingLevelMap">;
+} satisfies Pick<ProviderModelConfig, "reasoning" | "compat" | "thinkingLevelMap">;
 
-export function getSyntheticModelOverrides(modelId: string): Pick<ProviderModelConfig, "compat" | "thinkingLevelMap"> {
+type SyntheticModelOverrides = Pick<ProviderModelConfig, "compat"> &
+	Partial<Pick<ProviderModelConfig, "reasoning" | "thinkingLevelMap">>;
+
+export function getSyntheticModelOverrides(modelId: string): SyntheticModelOverrides {
 	if (modelId === GLM_5_2_MODEL_ID) {
 		return GLM_5_2_REASONING_OVERRIDES;
 	}
