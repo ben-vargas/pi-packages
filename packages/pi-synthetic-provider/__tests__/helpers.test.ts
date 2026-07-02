@@ -35,6 +35,25 @@ describe("pi-synthetic-provider helpers", () => {
 			expect(model.name).toEqual(expect.any(String));
 		}
 	});
+
+	it("enables reasoning effort only for GLM-5.2 in fallback models", () => {
+		const models = getFallbackModels();
+		const glm = models.find((model) => model.id === "hf:zai-org/GLM-5.2");
+		expect(glm).toMatchObject({ compat: { supportsReasoningEffort: true } });
+		expect(glm?.thinkingLevelMap).toEqual({
+			minimal: null,
+			low: "high",
+			medium: "high",
+			high: "high",
+			xhigh: "max",
+		});
+
+		for (const model of models) {
+			if (model.id === "hf:zai-org/GLM-5.2") continue;
+			expect(model).toMatchObject({ compat: { supportsReasoningEffort: false } });
+			expect(model.thinkingLevelMap).toBeUndefined();
+		}
+	});
 });
 
 describe("quota helpers", () => {
