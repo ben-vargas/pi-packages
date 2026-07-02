@@ -65,6 +65,82 @@ describe("pi-synthetic-provider", () => {
 		);
 	});
 
+	it("applies GLM-5.2 reasoning-effort overrides to live models only", async () => {
+		const liveModel = (id: string, name: string) => ({
+			id,
+			name,
+			always_on: true,
+			supported_features: ["tools", "reasoning"],
+			input_modalities: ["text"],
+			context_length: 524288,
+			max_output_length: 65536,
+			pricing: { prompt: "1", completion: "3" },
+		});
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue({
+				ok: true,
+				json: async () => ({
+					data: [
+						liveModel("hf:zai-org/GLM-5.2", "zai-org/GLM-5.2"),
+						liveModel("hf:MiniMaxAI/MiniMax-M3", "MiniMaxAI/MiniMax-M3"),
+					],
+				}),
+			}),
+		);
+		const mockPi = createMockPi();
+		await syntheticProvider(mockPi as unknown as ExtensionAPI);
+
+		const models = mockPi.registerProvider.mock.calls[0]?.[1].models as ProviderModelConfig[];
+		const glm = models.find((model) => model.id === "hf:zai-org/GLM-5.2");
+		expect(glm).toMatchObject({ compat: { supportsReasoningEffort: true } });
+		expect(glm?.thinkingLevelMap).toEqual({
+			off: null,
+			minimal: null,
+			low: "high",
+			medium: "high",
+			high: "high",
+			xhigh: "max",
+		});
+
+		const minimax = models.find((model) => model.id === "hf:MiniMaxAI/MiniMax-M3");
+		expect(minimax).toMatchObject({ compat: { supportsReasoningEffort: false } });
+		expect(minimax?.thinkingLevelMap).toBeUndefined();
+	});
+
+	it("keeps GLM-5.2 reasoning enabled when the live catalog omits supported_features", async () => {
+		const liveModel = (id: string, name: string) => ({
+			id,
+			name,
+			always_on: true,
+			input_modalities: ["text"],
+			context_length: 524288,
+			max_output_length: 65536,
+			pricing: { prompt: "1", completion: "3" },
+		});
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue({
+				ok: true,
+				json: async () => ({
+					data: [
+						liveModel("hf:zai-org/GLM-5.2", "zai-org/GLM-5.2"),
+						liveModel("hf:MiniMaxAI/MiniMax-M3", "MiniMaxAI/MiniMax-M3"),
+					],
+				}),
+			}),
+		);
+		const mockPi = createMockPi();
+		await syntheticProvider(mockPi as unknown as ExtensionAPI);
+
+		const models = mockPi.registerProvider.mock.calls[0]?.[1].models as ProviderModelConfig[];
+		const glm = models.find((model) => model.id === "hf:zai-org/GLM-5.2");
+		expect(glm).toMatchObject({ reasoning: true, compat: { supportsReasoningEffort: true } });
+
+		const minimax = models.find((model) => model.id === "hf:MiniMaxAI/MiniMax-M3");
+		expect(minimax).toMatchObject({ reasoning: false });
+	});
+
 	it("registers event listeners", async () => {
 		stubModelsFetch();
 		const mockPi = createMockPi();

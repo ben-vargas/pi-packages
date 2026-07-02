@@ -7,6 +7,58 @@ import { SYNTHETIC_COMPAT, SYNTHETIC_MODELS_ENDPOINT } from "./config.js";
 import { parsePrice } from "./formatting.js";
 import type { SyntheticModelsResponse } from "./types.js";
 
+export const GLM_5_2_MODEL_ID = "hf:zai-org/GLM-5.2";
+
+/**
+ * Per-model reasoning-effort support (https://github.com/ben-vargas/pi-packages/issues/21).
+ *
+ * GLM-5.2 accepts `reasoning_effort` with two values, "high" and "max" (its
+ * server-side default is "max" when the field is omitted). The map mirrors
+ * pi's built-in zai/glm-5.2 model, except we stay on the adapter's default
+ * OpenAI thinking format: Synthetic's proxy documents `reasoning_effort`
+ * only, not z.ai's `thinking: { type }` object.
+ *
+ * `null` hides a level from pi's thinking-level cycling. "off" is hidden
+ * because omitting the field would silently run GLM at its "max" default and
+ * Synthetic has no documented disable parameter; pi clamps "off" to "low",
+ * so the lightest selectable setting sends "high". "minimal" is hidden
+ * because GLM has nothing lighter than "high". Other catalog models keep the
+ * shared compat (no effort field sent) until their native thinking parameters
+ * are verified through Synthetic; an unsupported parameter fails the request
+ * with no retry.
+ *
+ * `reasoning: true` is pinned because the live catalog only populates
+ * `supported_features` for Synthetic-hosted models and the adapter gates all
+ * effort emission on `model.reasoning`; without the pin, a live GLM-5.2 row
+ * missing that field would register with the override silently inert while
+ * the fallback path works.
+ */
+const GLM_5_2_REASONING_OVERRIDES = {
+	reasoning: true,
+	compat: {
+		...SYNTHETIC_COMPAT,
+		supportsReasoningEffort: true,
+	},
+	thinkingLevelMap: {
+		off: null,
+		minimal: null,
+		low: "high",
+		medium: "high",
+		high: "high",
+		xhigh: "max",
+	},
+} satisfies Pick<ProviderModelConfig, "reasoning" | "compat" | "thinkingLevelMap">;
+
+type SyntheticModelOverrides = Pick<ProviderModelConfig, "compat"> &
+	Partial<Pick<ProviderModelConfig, "reasoning" | "thinkingLevelMap">>;
+
+export function getSyntheticModelOverrides(modelId: string): SyntheticModelOverrides {
+	if (modelId === GLM_5_2_MODEL_ID) {
+		return GLM_5_2_REASONING_OVERRIDES;
+	}
+	return { compat: SYNTHETIC_COMPAT };
+}
+
 export interface FetchSyntheticModelsOptions {
 	timeoutMs?: number;
 }
@@ -94,7 +146,7 @@ export async function fetchSyntheticModels(
 				},
 				contextWindow: model.context_length || 128000,
 				maxTokens: model.max_output_length || 32768,
-				compat: SYNTHETIC_COMPAT,
+				...getSyntheticModelOverrides(modelId),
 			});
 		}
 
@@ -181,7 +233,7 @@ export function getFallbackModels(): ProviderModelConfig[] {
 			compat: SYNTHETIC_COMPAT,
 		},
 		{
-			id: "hf:zai-org/GLM-5.2",
+			id: GLM_5_2_MODEL_ID,
 			name: "zai-org/GLM-5.2",
 			reasoning: true,
 			input: ["text"],
@@ -193,7 +245,7 @@ export function getFallbackModels(): ProviderModelConfig[] {
 			},
 			contextWindow: 524288,
 			maxTokens: 65536,
-			compat: SYNTHETIC_COMPAT,
+			...getSyntheticModelOverrides(GLM_5_2_MODEL_ID),
 		},
 		{
 			id: "hf:zai-org/GLM-5.1",

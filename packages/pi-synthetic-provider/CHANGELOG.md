@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.16] - 2026-07-02
+
+### Added
+- Thinking-level support for `hf:zai-org/GLM-5.2` ([#21](https://github.com/ben-vargas/pi-packages/issues/21)): pi's thinking levels now map onto GLM's supported `reasoning_effort` values (`low`/`medium`/`high` → `high`, `xhigh` → `max`). `off` and `minimal` are hidden — Synthetic has no documented way to disable GLM reasoning, and omitting the field would silently run at GLM's `max` default, so the lightest selectable level is `low` (sends `high`). Applied on both the live-catalog and fallback registration paths via a new per-model compat override, which also pins `reasoning: true` so a live catalog row missing `supported_features` cannot silently disable the effort mapping; all other Synthetic models keep the shared compat until their native thinking parameters are verified through Synthetic's proxy.
+
 ## [1.1.15] - 2026-06-18
 
 ### Fixed
