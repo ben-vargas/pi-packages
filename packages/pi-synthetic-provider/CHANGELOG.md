@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.17] - 2026-07-04
+
+### Changed
+- Refreshed the hardcoded Synthetic fallback catalog from the live `/openai/v1/models` endpoint: added `hf:moonshotai/Kimi-K2.7-Code`, removed stale direct fallbacks that are no longer always-on, and updated current model metadata for MiniMax M3 and GPT OSS 120B.
+
 ## [1.1.16] - 2026-07-02
 
 ### Added

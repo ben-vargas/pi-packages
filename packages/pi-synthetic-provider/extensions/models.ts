@@ -166,7 +166,7 @@ export async function fetchSyntheticModels(
 /**
  * Fallback models if API fetch fails.
  * Data sourced from: authenticated GET https://api.synthetic.new/openai/v1/models
- * Last updated: 2026-06-18
+ * Last updated: 2026-07-04
  *
  * Pricing format: $/million tokens
  */
@@ -233,6 +233,21 @@ export function getFallbackModels(): ProviderModelConfig[] {
 			compat: SYNTHETIC_COMPAT,
 		},
 		{
+			id: "hf:openai/gpt-oss-120b",
+			name: "openai/gpt-oss-120b",
+			reasoning: true,
+			input: ["text"],
+			cost: {
+				input: 0.1,
+				output: 0.1,
+				cacheRead: 0.1,
+				cacheWrite: 0,
+			},
+			contextWindow: 131072,
+			maxTokens: 65536,
+			compat: SYNTHETIC_COMPAT,
+		},
+		{
 			id: GLM_5_2_MODEL_ID,
 			name: "zai-org/GLM-5.2",
 			reasoning: true,
@@ -248,23 +263,8 @@ export function getFallbackModels(): ProviderModelConfig[] {
 			...getSyntheticModelOverrides(GLM_5_2_MODEL_ID),
 		},
 		{
-			id: "hf:zai-org/GLM-5.1",
-			name: "zai-org/GLM-5.1",
-			reasoning: true,
-			input: ["text"],
-			cost: {
-				input: 1,
-				output: 3,
-				cacheRead: 1,
-				cacheWrite: 0,
-			},
-			contextWindow: 196608,
-			maxTokens: 65536,
-			compat: SYNTHETIC_COMPAT,
-		},
-		{
-			id: "hf:moonshotai/Kimi-K2.6",
-			name: "moonshotai/Kimi-K2.6",
+			id: "hf:moonshotai/Kimi-K2.7-Code",
+			name: "moonshotai/Kimi-K2.7-Code",
 			reasoning: true,
 			input: ["text", "image"],
 			cost: {
@@ -303,7 +303,7 @@ export function getFallbackModels(): ProviderModelConfig[] {
 				cacheRead: 0.6,
 				cacheWrite: 0,
 			},
-			contextWindow: 524288,
+			contextWindow: 262144,
 			maxTokens: 65536,
 			compat: SYNTHETIC_COMPAT,
 		},
@@ -335,51 +335,6 @@ export function getFallbackModels(): ProviderModelConfig[] {
 			},
 			contextWindow: 262144,
 			maxTokens: 65536,
-			compat: SYNTHETIC_COMPAT,
-		},
-		{
-			id: "hf:zai-org/GLM-4.7",
-			name: "zai-org/GLM-4.7",
-			reasoning: true,
-			input: ["text"],
-			cost: {
-				input: 0.45,
-				output: 2.19,
-				cacheRead: 0.45,
-				cacheWrite: 0,
-			},
-			contextWindow: 202752,
-			maxTokens: 65536,
-			compat: SYNTHETIC_COMPAT,
-		},
-		{
-			id: "hf:openai/gpt-oss-120b",
-			name: "openai/gpt-oss-120b",
-			reasoning: false,
-			input: ["text"],
-			cost: {
-				input: 0.1,
-				output: 0.1,
-				cacheRead: 0.1,
-				cacheWrite: 0,
-			},
-			contextWindow: 131072,
-			maxTokens: 32768,
-			compat: SYNTHETIC_COMPAT,
-		},
-		{
-			id: "hf:Qwen/Qwen3.5-397B-A17B",
-			name: "Qwen/Qwen3.5-397B-A17B",
-			reasoning: false,
-			input: ["text", "image"],
-			cost: {
-				input: 0.6,
-				output: 3.6,
-				cacheRead: 0.6,
-				cacheWrite: 0,
-			},
-			contextWindow: 262144,
-			maxTokens: 32768,
 			compat: SYNTHETIC_COMPAT,
 		},
 	];

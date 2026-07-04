@@ -19,21 +19,38 @@ describe("pi-synthetic-provider helpers", () => {
 
 	it("provides fallback models", () => {
 		const models = getFallbackModels();
-		expect(models).toHaveLength(14);
-		expect(models.some((model) => model.id === "syn:large:text")).toBe(true);
-		expect(models.some((model) => model.id === "syn:small:vision")).toBe(true);
-		expect(models.some((model) => model.id === "hf:zai-org/GLM-5.2")).toBe(true);
-		expect(models.some((model) => model.id === "hf:moonshotai/Kimi-K2.6")).toBe(true);
-		expect(models.some((model) => model.id === "hf:nvidia/Kimi-K2.5-NVFP4")).toBe(false);
-		expect(models.some((model) => model.id === "hf:nvidia/Kimi-K2.6-NVFP4")).toBe(false);
-		expect(models.some((model) => model.id === "hf:MiniMaxAI/MiniMax-M2.5")).toBe(false);
-		expect(models.some((model) => model.id === "hf:MiniMaxAI/MiniMax-M3")).toBe(true);
-		expect(models.some((model) => model.id === "hf:zai-org/GLM-5.1")).toBe(true);
-		expect(models.some((model) => model.id === "hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4")).toBe(true);
-		for (const model of models) {
-			expect(model.id).toEqual(expect.any(String));
-			expect(model.name).toEqual(expect.any(String));
+		const modelIds = models.map((model) => model.id);
+
+		expect(modelIds).toEqual([
+			"syn:large:text",
+			"syn:small:text",
+			"syn:large:vision",
+			"syn:small:vision",
+			"hf:openai/gpt-oss-120b",
+			"hf:zai-org/GLM-5.2",
+			"hf:moonshotai/Kimi-K2.7-Code",
+			"hf:Qwen/Qwen3.6-27B",
+			"hf:MiniMaxAI/MiniMax-M3",
+			"hf:zai-org/GLM-4.7-Flash",
+			"hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4",
+		]);
+
+		for (const staleId of [
+			"hf:zai-org/GLM-5.1",
+			"hf:moonshotai/Kimi-K2.6",
+			"hf:zai-org/GLM-4.7",
+			"hf:Qwen/Qwen3.5-397B-A17B",
+		]) {
+			expect(modelIds).not.toContain(staleId);
 		}
+
+		expect(models.find((model) => model.id === "hf:openai/gpt-oss-120b")).toMatchObject({
+			reasoning: true,
+			maxTokens: 65536,
+		});
+		expect(models.find((model) => model.id === "hf:MiniMaxAI/MiniMax-M3")).toMatchObject({
+			contextWindow: 262144,
+		});
 	});
 
 	it("enables reasoning effort only for GLM-5.2 in fallback models", () => {
