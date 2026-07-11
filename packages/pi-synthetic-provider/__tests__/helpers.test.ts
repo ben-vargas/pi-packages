@@ -53,23 +53,39 @@ describe("pi-synthetic-provider helpers", () => {
 		});
 	});
 
-	it("enables reasoning effort only for GLM-5.2 in fallback models", () => {
+	it("enables reasoning effort for all reasoning models in fallback models", () => {
 		const models = getFallbackModels();
+
+		// GLM-5.2
 		const glm = models.find((model) => model.id === "hf:zai-org/GLM-5.2");
 		expect(glm).toMatchObject({ compat: { supportsReasoningEffort: true } });
 		expect(glm?.thinkingLevelMap).toEqual({
-			off: null,
+			off: "none",
 			minimal: null,
-			low: "high",
-			medium: "high",
+			low: null,
+			medium: null,
 			high: "high",
-			xhigh: "max",
+			xhigh: "medium",
 		});
 
-		for (const model of models) {
-			if (model.id === "hf:zai-org/GLM-5.2") continue;
+		// Other reasoning models should also have effort enabled
+		for (const id of [
+			"hf:zai-org/GLM-4.7-Flash",
+			"hf:moonshotai/Kimi-K2.7-Code",
+			"hf:Qwen/Qwen3.6-27B",
+			"hf:MiniMaxAI/MiniMax-M3",
+			"hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4",
+		]) {
+			const model = models.find((m) => m.id === id);
+			expect(model).toMatchObject({ compat: { supportsReasoningEffort: true } });
+			expect(model?.thinkingLevelMap).toBeDefined();
+		}
+
+		// Non-reasoning fallbacks keep default compat
+		for (const id of ["syn:large:text", "syn:small:text", "syn:large:vision", "syn:small:vision", "hf:openai/gpt-oss-120b"]) {
+			const model = models.find((m) => m.id === id);
 			expect(model).toMatchObject({ compat: { supportsReasoningEffort: false } });
-			expect(model.thinkingLevelMap).toBeUndefined();
+			expect(model?.thinkingLevelMap).toBeUndefined();
 		}
 	});
 });

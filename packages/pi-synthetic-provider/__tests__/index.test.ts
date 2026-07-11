@@ -65,7 +65,7 @@ describe("pi-synthetic-provider", () => {
 		);
 	});
 
-	it("applies GLM-5.2 reasoning-effort overrides to live models only", async () => {
+	it("applies reasoning-effort overrides for all reasoning models in live fetch", async () => {
 		const liveModel = (id: string, name: string) => ({
 			id,
 			name,
@@ -92,20 +92,23 @@ describe("pi-synthetic-provider", () => {
 		await syntheticProvider(mockPi as unknown as ExtensionAPI);
 
 		const models = mockPi.registerProvider.mock.calls[0]?.[1].models as ProviderModelConfig[];
+
+		// GLM-5.2 has effort with its specific level map
 		const glm = models.find((model) => model.id === "hf:zai-org/GLM-5.2");
 		expect(glm).toMatchObject({ compat: { supportsReasoningEffort: true } });
 		expect(glm?.thinkingLevelMap).toEqual({
-			off: null,
+			off: "none",
 			minimal: null,
-			low: "high",
-			medium: "high",
+			low: null,
+			medium: null,
 			high: "high",
-			xhigh: "max",
+			xhigh: "medium",
 		});
 
+		// MiniMax also has effort enabled with max_completion_tokens
 		const minimax = models.find((model) => model.id === "hf:MiniMaxAI/MiniMax-M3");
-		expect(minimax).toMatchObject({ compat: { supportsReasoningEffort: false } });
-		expect(minimax?.thinkingLevelMap).toBeUndefined();
+		expect(minimax).toMatchObject({ compat: { supportsReasoningEffort: true, maxTokensField: "max_completion_tokens" } });
+		expect(minimax?.thinkingLevelMap).toBeDefined();
 	});
 
 	it("keeps GLM-5.2 reasoning enabled when the live catalog omits supported_features", async () => {
