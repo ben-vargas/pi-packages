@@ -20,20 +20,20 @@ type SyntheticModelOverrides = Pick<ProviderModelConfig, "compat"> &
 /**
  * Per-model reasoning-effort support (https://github.com/ben-vargas/pi-packages/issues/21).
  *
- * Synthetic's OpenAI-compatible API accepts `reasoning_effort` with values
- * "low", "medium", and "high". Some models only support a subset.
- * Setting a level to `null` hides it from pi's thinking-level cycling.
+ * Live Synthetic API probes verified which `reasoning_effort` values are accepted
+ * and whether they engage reasoning. GLM-5.2, GLM-4.7-Flash, Qwen3.6-27B, and
+ * Nemotron map off to `none`; their `low` value also disables reasoning, so pi's
+ * minimal and low levels are hidden. GLM-4.7-Flash and Nemotron reject `max`,
+ * while GLM-5.2, Kimi-K2.7-Code, and Qwen accept it for xhigh.
  *
- * GLM-5.2 has two effective tiers: `high` (lower) and an unset default that
- * falls through to `max` (highest). Synthetic's OpenAI shim rejects literal
- * `max`, so `xhigh` maps to `"medium"` which the GLM chat template treats as max.
+ * Kimi's `none` and `low` values leak raw thinking tags, so only its cleanly
+ * separated medium through xhigh levels are exposed. MiniMax reasons at every
+ * probed value, so off is hidden and only its verified medium tier is exposed.
+ * Relative depth between accepted tiers was not established. `null` hides a
+ * level from pi's thinking-level cycling.
  *
- * `reasoning: true` is pinned for GLM-5.2 because the live API may not populate
- * `supported_features` for proxied models; without the pin, the adapter would
- * silently skip effort emission.
- *
- * Each model's `compat` extends `SYNTHETIC_COMPAT` with `supportsReasoningEffort: true`
- * and any model-specific overrides (e.g. MiniMax uses `max_completion_tokens`).
+ * `reasoning: true` is pinned because the live catalog may omit
+ * `supported_features`; each override enables OpenAI-style reasoning effort.
  */
 
 const GLM_5_2_REASONING_OVERRIDES = {
@@ -46,13 +46,14 @@ const GLM_5_2_REASONING_OVERRIDES = {
 		off: "none",
 		minimal: null,
 		low: null,
-		medium: null,
+		medium: "medium",
 		high: "high",
-		xhigh: "medium",
+		xhigh: "max",
 	},
 } satisfies SyntheticModelOverrides;
 
 const GLM_4_7_FLASH_REASONING_OVERRIDES = {
+	reasoning: true,
 	compat: {
 		...SYNTHETIC_COMPAT,
 		supportsReasoningEffort: true,
@@ -62,12 +63,13 @@ const GLM_4_7_FLASH_REASONING_OVERRIDES = {
 		minimal: null,
 		low: null,
 		medium: "medium",
-		high: null,
+		high: "high",
 		xhigh: null,
 	},
 } satisfies SyntheticModelOverrides;
 
 const KIMI_K27_CODE_REASONING_OVERRIDES = {
+	reasoning: true,
 	compat: {
 		...SYNTHETIC_COMPAT,
 		supportsReasoningEffort: true,
@@ -77,12 +79,13 @@ const KIMI_K27_CODE_REASONING_OVERRIDES = {
 		minimal: null,
 		low: null,
 		medium: "medium",
-		high: null,
-		xhigh: null,
+		high: "high",
+		xhigh: "max",
 	},
 } satisfies SyntheticModelOverrides;
 
 const QWEN_3_6_27B_REASONING_OVERRIDES = {
+	reasoning: true,
 	compat: {
 		...SYNTHETIC_COMPAT,
 		supportsReasoningEffort: true,
@@ -92,16 +95,16 @@ const QWEN_3_6_27B_REASONING_OVERRIDES = {
 		minimal: null,
 		low: null,
 		medium: "medium",
-		high: null,
-		xhigh: null,
+		high: "high",
+		xhigh: "max",
 	},
 } satisfies SyntheticModelOverrides;
 
 const MINIMAX_M3_REASONING_OVERRIDES = {
+	reasoning: true,
 	compat: {
 		...SYNTHETIC_COMPAT,
 		supportsReasoningEffort: true,
-		maxTokensField: "max_completion_tokens",
 	},
 	thinkingLevelMap: {
 		off: null,
@@ -114,6 +117,7 @@ const MINIMAX_M3_REASONING_OVERRIDES = {
 } satisfies SyntheticModelOverrides;
 
 const NEMOTRON_3_SUPER_REASONING_OVERRIDES = {
+	reasoning: true,
 	compat: {
 		...SYNTHETIC_COMPAT,
 		supportsReasoningEffort: true,
@@ -123,7 +127,7 @@ const NEMOTRON_3_SUPER_REASONING_OVERRIDES = {
 		minimal: null,
 		low: null,
 		medium: "medium",
-		high: null,
+		high: "high",
 		xhigh: null,
 	},
 } satisfies SyntheticModelOverrides;
