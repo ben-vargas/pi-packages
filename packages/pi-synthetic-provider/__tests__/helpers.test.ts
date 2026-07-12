@@ -53,23 +53,43 @@ describe("pi-synthetic-provider helpers", () => {
 		});
 	});
 
-	it("enables reasoning effort only for GLM-5.2 in fallback models", () => {
+	it("enables reasoning effort for all reasoning models in fallback models", () => {
 		const models = getFallbackModels();
-		const glm = models.find((model) => model.id === "hf:zai-org/GLM-5.2");
-		expect(glm).toMatchObject({ compat: { supportsReasoningEffort: true } });
-		expect(glm?.thinkingLevelMap).toEqual({
-			off: null,
-			minimal: null,
-			low: "high",
-			medium: "high",
-			high: "high",
-			xhigh: "max",
-		});
+		const reasoningModels = [
+			["hf:zai-org/GLM-5.2", { off: "none", minimal: null, low: null, medium: "medium", high: "high", xhigh: "max" }],
+			[
+				"hf:zai-org/GLM-4.7-Flash",
+				{ off: "none", minimal: null, low: null, medium: "medium", high: "high", xhigh: null },
+			],
+			[
+				"hf:moonshotai/Kimi-K2.7-Code",
+				{ off: null, minimal: null, low: null, medium: "medium", high: "high", xhigh: "max" },
+			],
+			["hf:Qwen/Qwen3.6-27B", { off: "none", minimal: null, low: null, medium: "medium", high: "high", xhigh: "max" }],
+			["hf:MiniMaxAI/MiniMax-M3", { off: null, minimal: null, low: null, medium: "medium", high: null, xhigh: null }],
+			[
+				"hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4",
+				{ off: "none", minimal: null, low: null, medium: "medium", high: "high", xhigh: null },
+			],
+		] as const;
 
-		for (const model of models) {
-			if (model.id === "hf:zai-org/GLM-5.2") continue;
+		for (const [id, thinkingLevelMap] of reasoningModels) {
+			const model = models.find((m) => m.id === id);
+			expect(model).toMatchObject({ reasoning: true, compat: { supportsReasoningEffort: true } });
+			expect(model?.thinkingLevelMap).toEqual(thinkingLevelMap);
+		}
+
+		// Non-reasoning fallbacks keep default compat
+		for (const id of [
+			"syn:large:text",
+			"syn:small:text",
+			"syn:large:vision",
+			"syn:small:vision",
+			"hf:openai/gpt-oss-120b",
+		]) {
+			const model = models.find((m) => m.id === id);
 			expect(model).toMatchObject({ compat: { supportsReasoningEffort: false } });
-			expect(model.thinkingLevelMap).toBeUndefined();
+			expect(model?.thinkingLevelMap).toBeUndefined();
 		}
 	});
 });

@@ -8,32 +8,67 @@ import { parsePrice } from "./formatting.js";
 import type { SyntheticModelsResponse } from "./types.js";
 
 export const GLM_5_2_MODEL_ID = "hf:zai-org/GLM-5.2";
+export const GLM_4_7_FLASH_MODEL_ID = "hf:zai-org/GLM-4.7-Flash";
+export const KIMI_K27_CODE_MODEL_ID = "hf:moonshotai/Kimi-K2.7-Code";
+export const QWEN_3_6_27B_MODEL_ID = "hf:Qwen/Qwen3.6-27B";
+export const MINIMAX_M3_MODEL_ID = "hf:MiniMaxAI/MiniMax-M3";
+export const NEMOTRON_3_SUPER_MODEL_ID = "hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4";
+
+type SyntheticModelOverrides = Pick<ProviderModelConfig, "compat"> &
+	Partial<Pick<ProviderModelConfig, "reasoning" | "thinkingLevelMap">>;
 
 /**
  * Per-model reasoning-effort support (https://github.com/ben-vargas/pi-packages/issues/21).
  *
- * GLM-5.2 accepts `reasoning_effort` with two values, "high" and "max" (its
- * server-side default is "max" when the field is omitted). The map mirrors
- * pi's built-in zai/glm-5.2 model, except we stay on the adapter's default
- * OpenAI thinking format: Synthetic's proxy documents `reasoning_effort`
- * only, not z.ai's `thinking: { type }` object.
+ * Live Synthetic API probes verified which `reasoning_effort` values are accepted
+ * and whether they engage reasoning. GLM-5.2, GLM-4.7-Flash, Qwen3.6-27B, and
+ * Nemotron map off to `none`; their `low` value also disables reasoning, so pi's
+ * minimal and low levels are hidden. GLM-4.7-Flash and Nemotron reject `max`,
+ * while GLM-5.2, Kimi-K2.7-Code, and Qwen accept it for xhigh.
  *
- * `null` hides a level from pi's thinking-level cycling. "off" is hidden
- * because omitting the field would silently run GLM at its "max" default and
- * Synthetic has no documented disable parameter; pi clamps "off" to "low",
- * so the lightest selectable setting sends "high". "minimal" is hidden
- * because GLM has nothing lighter than "high". Other catalog models keep the
- * shared compat (no effort field sent) until their native thinking parameters
- * are verified through Synthetic; an unsupported parameter fails the request
- * with no retry.
+ * Kimi's `none` and `low` values leak raw thinking tags, so only its cleanly
+ * separated medium through xhigh levels are exposed. MiniMax reasons at every
+ * probed value, so off is hidden and only its verified medium tier is exposed.
+ * Relative depth between accepted tiers was not established. `null` hides a
+ * level from pi's thinking-level cycling.
  *
- * `reasoning: true` is pinned because the live catalog only populates
- * `supported_features` for Synthetic-hosted models and the adapter gates all
- * effort emission on `model.reasoning`; without the pin, a live GLM-5.2 row
- * missing that field would register with the override silently inert while
- * the fallback path works.
+ * `reasoning: true` is pinned because the live catalog may omit
+ * `supported_features`; each override enables OpenAI-style reasoning effort.
  */
+
 const GLM_5_2_REASONING_OVERRIDES = {
+	reasoning: true,
+	compat: {
+		...SYNTHETIC_COMPAT,
+		supportsReasoningEffort: true,
+	},
+	thinkingLevelMap: {
+		off: "none",
+		minimal: null,
+		low: null,
+		medium: "medium",
+		high: "high",
+		xhigh: "max",
+	},
+} satisfies SyntheticModelOverrides;
+
+const GLM_4_7_FLASH_REASONING_OVERRIDES = {
+	reasoning: true,
+	compat: {
+		...SYNTHETIC_COMPAT,
+		supportsReasoningEffort: true,
+	},
+	thinkingLevelMap: {
+		off: "none",
+		minimal: null,
+		low: null,
+		medium: "medium",
+		high: "high",
+		xhigh: null,
+	},
+} satisfies SyntheticModelOverrides;
+
+const KIMI_K27_CODE_REASONING_OVERRIDES = {
 	reasoning: true,
 	compat: {
 		...SYNTHETIC_COMPAT,
@@ -42,19 +77,74 @@ const GLM_5_2_REASONING_OVERRIDES = {
 	thinkingLevelMap: {
 		off: null,
 		minimal: null,
-		low: "high",
-		medium: "high",
+		low: null,
+		medium: "medium",
 		high: "high",
 		xhigh: "max",
 	},
-} satisfies Pick<ProviderModelConfig, "reasoning" | "compat" | "thinkingLevelMap">;
+} satisfies SyntheticModelOverrides;
 
-type SyntheticModelOverrides = Pick<ProviderModelConfig, "compat"> &
-	Partial<Pick<ProviderModelConfig, "reasoning" | "thinkingLevelMap">>;
+const QWEN_3_6_27B_REASONING_OVERRIDES = {
+	reasoning: true,
+	compat: {
+		...SYNTHETIC_COMPAT,
+		supportsReasoningEffort: true,
+	},
+	thinkingLevelMap: {
+		off: "none",
+		minimal: null,
+		low: null,
+		medium: "medium",
+		high: "high",
+		xhigh: "max",
+	},
+} satisfies SyntheticModelOverrides;
+
+const MINIMAX_M3_REASONING_OVERRIDES = {
+	reasoning: true,
+	compat: {
+		...SYNTHETIC_COMPAT,
+		supportsReasoningEffort: true,
+	},
+	thinkingLevelMap: {
+		off: null,
+		minimal: null,
+		low: null,
+		medium: "medium",
+		high: null,
+		xhigh: null,
+	},
+} satisfies SyntheticModelOverrides;
+
+const NEMOTRON_3_SUPER_REASONING_OVERRIDES = {
+	reasoning: true,
+	compat: {
+		...SYNTHETIC_COMPAT,
+		supportsReasoningEffort: true,
+	},
+	thinkingLevelMap: {
+		off: "none",
+		minimal: null,
+		low: null,
+		medium: "medium",
+		high: "high",
+		xhigh: null,
+	},
+} satisfies SyntheticModelOverrides;
+
+const REASONING_OVERRIDES: Record<string, SyntheticModelOverrides> = {
+	[GLM_5_2_MODEL_ID]: GLM_5_2_REASONING_OVERRIDES,
+	[GLM_4_7_FLASH_MODEL_ID]: GLM_4_7_FLASH_REASONING_OVERRIDES,
+	[KIMI_K27_CODE_MODEL_ID]: KIMI_K27_CODE_REASONING_OVERRIDES,
+	[QWEN_3_6_27B_MODEL_ID]: QWEN_3_6_27B_REASONING_OVERRIDES,
+	[MINIMAX_M3_MODEL_ID]: MINIMAX_M3_REASONING_OVERRIDES,
+	[NEMOTRON_3_SUPER_MODEL_ID]: NEMOTRON_3_SUPER_REASONING_OVERRIDES,
+};
 
 export function getSyntheticModelOverrides(modelId: string): SyntheticModelOverrides {
-	if (modelId === GLM_5_2_MODEL_ID) {
-		return GLM_5_2_REASONING_OVERRIDES;
+	const override = REASONING_OVERRIDES[modelId];
+	if (override) {
+		return override;
 	}
 	return { compat: SYNTHETIC_COMPAT };
 }
@@ -275,7 +365,7 @@ export function getFallbackModels(): ProviderModelConfig[] {
 			},
 			contextWindow: 262144,
 			maxTokens: 65536,
-			compat: SYNTHETIC_COMPAT,
+			...getSyntheticModelOverrides(KIMI_K27_CODE_MODEL_ID),
 		},
 		{
 			id: "hf:Qwen/Qwen3.6-27B",
@@ -290,7 +380,7 @@ export function getFallbackModels(): ProviderModelConfig[] {
 			},
 			contextWindow: 262144,
 			maxTokens: 65536,
-			compat: SYNTHETIC_COMPAT,
+			...getSyntheticModelOverrides(QWEN_3_6_27B_MODEL_ID),
 		},
 		{
 			id: "hf:MiniMaxAI/MiniMax-M3",
@@ -305,7 +395,7 @@ export function getFallbackModels(): ProviderModelConfig[] {
 			},
 			contextWindow: 262144,
 			maxTokens: 65536,
-			compat: SYNTHETIC_COMPAT,
+			...getSyntheticModelOverrides(MINIMAX_M3_MODEL_ID),
 		},
 		{
 			id: "hf:zai-org/GLM-4.7-Flash",
@@ -320,7 +410,7 @@ export function getFallbackModels(): ProviderModelConfig[] {
 			},
 			contextWindow: 196608,
 			maxTokens: 65536,
-			compat: SYNTHETIC_COMPAT,
+			...getSyntheticModelOverrides(GLM_4_7_FLASH_MODEL_ID),
 		},
 		{
 			id: "hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4",
@@ -335,7 +425,7 @@ export function getFallbackModels(): ProviderModelConfig[] {
 			},
 			contextWindow: 262144,
 			maxTokens: 65536,
-			compat: SYNTHETIC_COMPAT,
+			...getSyntheticModelOverrides(NEMOTRON_3_SUPER_MODEL_ID),
 		},
 	];
 }

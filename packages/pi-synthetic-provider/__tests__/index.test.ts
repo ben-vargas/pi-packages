@@ -2,6 +2,46 @@ import type { ExtensionAPI, ProviderModelConfig } from "@earendil-works/pi-codin
 import { afterEach, describe, expect, it, vi } from "vitest";
 import syntheticProvider, { getFallbackModels } from "../extensions/index.js";
 
+const GLM_5_2_MODEL_ID = "hf:zai-org/GLM-5.2";
+const MINIMAX_M3_MODEL_ID = "hf:MiniMaxAI/MiniMax-M3";
+const REASONING_MODEL_MAPS = {
+	[GLM_5_2_MODEL_ID]: { off: "none", minimal: null, low: null, medium: "medium", high: "high", xhigh: "max" },
+	"hf:zai-org/GLM-4.7-Flash": {
+		off: "none",
+		minimal: null,
+		low: null,
+		medium: "medium",
+		high: "high",
+		xhigh: null,
+	},
+	"hf:moonshotai/Kimi-K2.7-Code": {
+		off: null,
+		minimal: null,
+		low: null,
+		medium: "medium",
+		high: "high",
+		xhigh: "max",
+	},
+	"hf:Qwen/Qwen3.6-27B": {
+		off: "none",
+		minimal: null,
+		low: null,
+		medium: "medium",
+		high: "high",
+		xhigh: "max",
+	},
+	[MINIMAX_M3_MODEL_ID]: { off: null, minimal: null, low: null, medium: "medium", high: null, xhigh: null },
+	"hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4": {
+		off: "none",
+		minimal: null,
+		low: null,
+		medium: "medium",
+		high: "high",
+		xhigh: null,
+	},
+} as const;
+const REASONING_MODEL_IDS = Object.keys(REASONING_MODEL_MAPS);
+
 const createMockPi = () =>
 	({
 		registerProvider: vi.fn(),
@@ -65,7 +105,7 @@ describe("pi-synthetic-provider", () => {
 		);
 	});
 
-	it("applies GLM-5.2 reasoning-effort overrides to live models only", async () => {
+	it("applies reasoning-effort overrides for all reasoning models in live fetch", async () => {
 		const liveModel = (id: string, name: string) => ({
 			id,
 			name,
@@ -81,10 +121,7 @@ describe("pi-synthetic-provider", () => {
 			vi.fn().mockResolvedValue({
 				ok: true,
 				json: async () => ({
-					data: [
-						liveModel("hf:zai-org/GLM-5.2", "zai-org/GLM-5.2"),
-						liveModel("hf:MiniMaxAI/MiniMax-M3", "MiniMaxAI/MiniMax-M3"),
-					],
+					data: REASONING_MODEL_IDS.map((id) => liveModel(id, id)),
 				}),
 			}),
 		);
@@ -92,23 +129,15 @@ describe("pi-synthetic-provider", () => {
 		await syntheticProvider(mockPi as unknown as ExtensionAPI);
 
 		const models = mockPi.registerProvider.mock.calls[0]?.[1].models as ProviderModelConfig[];
-		const glm = models.find((model) => model.id === "hf:zai-org/GLM-5.2");
-		expect(glm).toMatchObject({ compat: { supportsReasoningEffort: true } });
-		expect(glm?.thinkingLevelMap).toEqual({
-			off: null,
-			minimal: null,
-			low: "high",
-			medium: "high",
-			high: "high",
-			xhigh: "max",
-		});
 
-		const minimax = models.find((model) => model.id === "hf:MiniMaxAI/MiniMax-M3");
-		expect(minimax).toMatchObject({ compat: { supportsReasoningEffort: false } });
-		expect(minimax?.thinkingLevelMap).toBeUndefined();
+		for (const id of REASONING_MODEL_IDS) {
+			const model = models.find((candidate) => candidate.id === id);
+			expect(model).toMatchObject({ reasoning: true, compat: { supportsReasoningEffort: true } });
+			expect(model?.thinkingLevelMap).toEqual(REASONING_MODEL_MAPS[id as keyof typeof REASONING_MODEL_MAPS]);
+		}
 	});
 
-	it("keeps GLM-5.2 reasoning enabled when the live catalog omits supported_features", async () => {
+	it("keeps reasoning overrides enabled when the live catalog omits supported_features", async () => {
 		const liveModel = (id: string, name: string) => ({
 			id,
 			name,
@@ -123,10 +152,7 @@ describe("pi-synthetic-provider", () => {
 			vi.fn().mockResolvedValue({
 				ok: true,
 				json: async () => ({
-					data: [
-						liveModel("hf:zai-org/GLM-5.2", "zai-org/GLM-5.2"),
-						liveModel("hf:MiniMaxAI/MiniMax-M3", "MiniMaxAI/MiniMax-M3"),
-					],
+					data: REASONING_MODEL_IDS.map((id) => liveModel(id, id)),
 				}),
 			}),
 		);
@@ -134,11 +160,12 @@ describe("pi-synthetic-provider", () => {
 		await syntheticProvider(mockPi as unknown as ExtensionAPI);
 
 		const models = mockPi.registerProvider.mock.calls[0]?.[1].models as ProviderModelConfig[];
-		const glm = models.find((model) => model.id === "hf:zai-org/GLM-5.2");
-		expect(glm).toMatchObject({ reasoning: true, compat: { supportsReasoningEffort: true } });
-
-		const minimax = models.find((model) => model.id === "hf:MiniMaxAI/MiniMax-M3");
-		expect(minimax).toMatchObject({ reasoning: false });
+		for (const id of REASONING_MODEL_IDS) {
+			expect(models.find((model) => model.id === id)).toMatchObject({
+				reasoning: true,
+				compat: { supportsReasoningEffort: true },
+			});
+		}
 	});
 
 	it("registers event listeners", async () => {
