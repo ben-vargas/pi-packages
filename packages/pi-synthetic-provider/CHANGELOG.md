@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-12
+
+### Added
+- Thinking-level support for all six Synthetic reasoning models ([#23](https://github.com/ben-vargas/pi-packages/pull/23), follow-up to [#21](https://github.com/ben-vargas/pi-packages/issues/21)). Per-model `thinkingLevelMap` values were verified against 37 live probes of Synthetic's chat completions endpoint:
+  - `hf:zai-org/GLM-5.2` and `hf:Qwen/Qwen3.6-27B`: `off` → `none`, `medium` → `medium`, `high` → `high`, `xhigh` → `max`.
+  - `hf:zai-org/GLM-4.7-Flash` and `hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4`: same, minus `xhigh` — their backends reject `reasoning_effort: "max"` with HTTP 400.
+  - `hf:moonshotai/Kimi-K2.7-Code`: `medium`/`high`/`xhigh` (→ `max`) only; `none`/`low` leak raw `</think>` tags into message content, so `off` stays hidden.
+  - `hf:MiniMaxAI/MiniMax-M3`: `medium` only; no probed value disables its reasoning, so `off` stays hidden.
+  - `low` and `minimal` are hidden on all six: the provider-side `low` value verifiably *disables* reasoning on GLM-5.2, GLM-4.7-Flash, Qwen3.6-27B, and Nemotron, so mapping pi's `low` to it would silently behave like `off`.
+
+### Changed
+- `reasoning: true` is now pinned on all six reasoning overrides (previously GLM-5.2 only), so a live catalog row missing `supported_features` can no longer silently disable effort emission for the other five models.
+- Supersedes two 1.1.16 claims that live probing disproved: Synthetic *does* support disabling GLM-5.2 reasoning (`reasoning_effort: "none"`), so `off` is now selectable, and pi's `low`/`medium` no longer collapse to `high` — `medium` maps to `medium` directly.
+
 ## [1.1.17] - 2026-07-04
 
 ### Changed
