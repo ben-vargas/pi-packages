@@ -53,6 +53,10 @@ The original Orng theme was created by Matt Silverlock and is distributed with O
 
 Like the other light theme, `orng-light` expects a terminal with a light background.
 
+## Versioning
+
+This package follows [Semantic Versioning](https://semver.org/). See [CHANGELOG.md](./CHANGELOG.md) for release history.
+
 ## Uninstall
 
 ```bash
