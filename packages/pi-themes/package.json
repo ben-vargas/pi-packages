@@ -1,0 +1,42 @@
+{
+	"name": "@benvargas/pi-themes",
+	"version": "1.0.0",
+	"description": "Theme collection for pi",
+	"keywords": [
+		"pi",
+		"pi-package",
+		"pi-theme",
+		"pi-themes",
+		"pi-coding-agent",
+		"github",
+		"github-light",
+		"opencode",
+		"orange",
+		"orng",
+		"light-theme",
+		"theme"
+	],
+	"type": "module",
+	"files": [
+		"themes/",
+		"README.md",
+		"LICENSE",
+		"THIRD_PARTY_NOTICES.md"
+	],
+	"pi": {
+		"themes": [
+			"./themes"
+		]
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/ben-vargas/pi-packages.git",
+		"directory": "packages/pi-themes"
+	},
+	"author": "Ben Vargas",
+	"license": "MIT",
+	"bugs": {
+		"url": "https://github.com/ben-vargas/pi-packages/issues"
+	},
+	"homepage": "https://github.com/ben-vargas/pi-packages/tree/main/packages/pi-themes#readme"
+}
