@@ -12,6 +12,7 @@ Pi packages can include extensions, skills, prompt templates, and themes. See th
 | [@benvargas/pi-antigravity-image-gen](./packages/pi-antigravity-image-gen/) | Extension | Antigravity image generation (Gemini 3 Pro, inline rendering) |
 | [@benvargas/pi-exa-mcp](./packages/pi-exa-mcp/) | Extension | Exa MCP tools — web search + code context |
 | [@benvargas/pi-firecrawl](./packages/pi-firecrawl/) | Extension | Firecrawl tools — scrape, map, search |
+| [@benvargas/pi-themes](./packages/pi-themes/) | Themes | Theme collection, including GitHub Light Default and Orng Light |
 | [@benvargas/pi-ancestor-discovery](./packages/pi-ancestor-discovery/) | Extension | Ancestor discovery for skills, prompts, themes |
 | [@benvargas/pi-cut-stack](./packages/pi-cut-stack/) | Extension | Cut-stack editor shortcuts |
 | [@benvargas/pi-openai-fast](./packages/pi-openai-fast/) | Extension | `/fast` toggle for OpenAI priority service tier on supported GPT-5.4 models |
@@ -54,6 +55,7 @@ pi install npm:@benvargas/pi-synthetic-provider
 pi install npm:@benvargas/pi-antigravity-image-gen
 pi install npm:@benvargas/pi-exa-mcp
 pi install npm:@benvargas/pi-firecrawl
+pi install npm:@benvargas/pi-themes
 pi install npm:@benvargas/pi-ancestor-discovery
 pi install npm:@benvargas/pi-cut-stack
 pi install npm:@benvargas/pi-openai-fast
@@ -85,6 +87,7 @@ pi remove npm:@benvargas/pi-synthetic-provider
 pi remove npm:@benvargas/pi-antigravity-image-gen
 pi remove npm:@benvargas/pi-exa-mcp
 pi remove npm:@benvargas/pi-firecrawl
+pi remove npm:@benvargas/pi-themes
 pi remove npm:@benvargas/pi-ancestor-discovery
 pi remove npm:@benvargas/pi-cut-stack
 pi remove npm:@benvargas/pi-openai-fast
