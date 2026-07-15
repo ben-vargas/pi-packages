@@ -36,7 +36,7 @@
 		"text": "text",
 		"thinkingText": "muted",
 
-		"selectedBg": "primary",
+		"selectedBg": "element",
 		"userMessageBg": "panel",
 		"userMessageText": "text",
 		"customMessageBg": "element",
@@ -77,11 +77,10 @@
 		"thinkingMinimal": "dim",
 		"thinkingLow": "info",
 		"thinkingMedium": "success",
-		"thinkingHigh": "primary",
+		"thinkingHigh": "yellow",
 		"thinkingXhigh": "error",
-		"thinkingMax": "diffRemoved",
 
-		"bashMode": "secondary"
+		"bashMode": "text"
 	},
 	"export": {
 		"pageBg": "background",

@@ -22,7 +22,6 @@
 		"string": "#0a3069",
 		"softGreen": "#116329",
 		"softRed": "#cf222e",
-		"deepRed": "#82071e",
 		"blueSurface": "#ddf4ff",
 		"greenSurface": "#dafbe1",
 		"redSurface": "#ffebe9",
@@ -85,7 +84,6 @@
 		"thinkingMedium": "cyan",
 		"thinkingHigh": "purple",
 		"thinkingXhigh": "softRed",
-		"thinkingMax": "deepRed",
 
 		"bashMode": "green"
 	},

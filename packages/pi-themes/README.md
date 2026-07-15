@@ -24,7 +24,7 @@ pi -e npm:@benvargas/pi-themes
 For local development from this repository:
 
 ```bash
-pi -e ~/projects/ben-vargas/pi-packages/packages/pi-themes
+pi -e ./packages/pi-themes
 ```
 
 ## Select a Theme
