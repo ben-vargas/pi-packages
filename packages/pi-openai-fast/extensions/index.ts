@@ -23,10 +23,19 @@ const FAST_SERVICE_TIER = "priority";
 const DEFAULT_SUPPORTED_MODEL_KEYS = [
 	"openai/gpt-5.4",
 	"openai/gpt-5.5",
+	"openai/gpt-5.6-sol",
+	"openai/gpt-5.6-terra",
+	"openai/gpt-5.6-luna",
 	"openai-codex/gpt-5.4",
 	"openai-codex/gpt-5.5",
+	"openai-codex/gpt-5.6-sol",
+	"openai-codex/gpt-5.6-terra",
+	"openai-codex/gpt-5.6-luna",
 ] as const;
-const LEGACY_DEFAULT_SUPPORTED_MODEL_KEYS = ["openai/gpt-5.4", "openai-codex/gpt-5.4"] as const;
+const LEGACY_DEFAULT_SUPPORTED_MODEL_KEY_SETS = [
+	["openai/gpt-5.4", "openai-codex/gpt-5.4"],
+	["openai/gpt-5.4", "openai/gpt-5.5", "openai-codex/gpt-5.4", "openai-codex/gpt-5.5"],
+] as const;
 
 interface FastModeState {
 	active: boolean;
@@ -146,7 +155,7 @@ function sameModelKeys(left: readonly string[] | undefined, right: readonly stri
 }
 
 function migrateSupportedModelKeys(value: string[] | undefined): string[] | undefined {
-	if (sameModelKeys(value, LEGACY_DEFAULT_SUPPORTED_MODEL_KEYS)) {
+	if (LEGACY_DEFAULT_SUPPORTED_MODEL_KEY_SETS.some((legacyKeys) => sameModelKeys(value, legacyKeys))) {
 		return [...DEFAULT_SUPPORTED_MODEL_KEYS];
 	}
 	return value;
@@ -400,7 +409,7 @@ export const _test = {
 	FAST_COMMAND_ARGS,
 	FAST_SERVICE_TIER,
 	DEFAULT_SUPPORTED_MODEL_KEYS,
-	LEGACY_DEFAULT_SUPPORTED_MODEL_KEYS,
+	LEGACY_DEFAULT_SUPPORTED_MODEL_KEY_SETS,
 	DEFAULT_CONFIG_FILE,
 	getConfigPaths,
 	parseSupportedModelKey,

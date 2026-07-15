@@ -28,15 +28,13 @@ function createTempConfigPaths(): { cwd: string; homeDir: string; cleanup: () =>
 
 describe("pi-openai-fast helpers", () => {
 	it("parses supported model keys and recognizes supported fast models", () => {
-		const supportedModels =
-			_test.parseSupportedModels([
-				"openai/gpt-5.4",
-				"openai/gpt-5.5",
-				"openai-codex/gpt-5.4",
-				"openai-codex/gpt-5.5",
-			]) ?? [];
+		const supportedModels = _test.parseSupportedModels(_test.DEFAULT_SUPPORTED_MODEL_KEYS) ?? [];
 		expect(_test.parseSupportedModelKey("openai/gpt-5.4")).toEqual({ provider: "openai", id: "gpt-5.4" });
 		expect(_test.parseSupportedModelKey("openai/gpt-5.5")).toEqual({ provider: "openai", id: "gpt-5.5" });
+		expect(_test.parseSupportedModelKey("openai/gpt-5.6-sol")).toEqual({
+			provider: "openai",
+			id: "gpt-5.6-sol",
+		});
 		expect(_test.parseSupportedModelKey("invalid-model")).toBeUndefined();
 		expect(
 			_test.isFastSupportedModel({ provider: "openai", id: "gpt-5.4" } as ExtensionContext["model"], supportedModels),
@@ -53,6 +51,18 @@ describe("pi-openai-fast helpers", () => {
 		expect(
 			_test.isFastSupportedModel(
 				{ provider: "openai-codex", id: "gpt-5.5" } as ExtensionContext["model"],
+				supportedModels,
+			),
+		).toBe(true);
+		expect(
+			_test.isFastSupportedModel(
+				{ provider: "openai", id: "gpt-5.6-luna" } as ExtensionContext["model"],
+				supportedModels,
+			),
+		).toBe(true);
+		expect(
+			_test.isFastSupportedModel(
+				{ provider: "openai-codex", id: "gpt-5.6-terra" } as ExtensionContext["model"],
 				supportedModels,
 			),
 		).toBe(true);
@@ -75,8 +85,14 @@ describe("pi-openai-fast helpers", () => {
 			expect(defaultConfig.supportedModels).toEqual([
 				{ provider: "openai", id: "gpt-5.4" },
 				{ provider: "openai", id: "gpt-5.5" },
+				{ provider: "openai", id: "gpt-5.6-sol" },
+				{ provider: "openai", id: "gpt-5.6-terra" },
+				{ provider: "openai", id: "gpt-5.6-luna" },
 				{ provider: "openai-codex", id: "gpt-5.4" },
 				{ provider: "openai-codex", id: "gpt-5.5" },
+				{ provider: "openai-codex", id: "gpt-5.6-sol" },
+				{ provider: "openai-codex", id: "gpt-5.6-terra" },
+				{ provider: "openai-codex", id: "gpt-5.6-luna" },
 			]);
 
 			const { projectConfigPath, globalConfigPath } = _test.getConfigPaths(cwd, homeDir);
@@ -104,12 +120,9 @@ describe("pi-openai-fast helpers", () => {
 	});
 
 	it("migrates legacy default supported models without changing custom supported models", () => {
-		expect(_test.migrateSupportedModelKeys(["openai/gpt-5.4", "openai-codex/gpt-5.4"])).toEqual([
-			"openai/gpt-5.4",
-			"openai/gpt-5.5",
-			"openai-codex/gpt-5.4",
-			"openai-codex/gpt-5.5",
-		]);
+		for (const legacyKeys of _test.LEGACY_DEFAULT_SUPPORTED_MODEL_KEY_SETS) {
+			expect(_test.migrateSupportedModelKeys([...legacyKeys])).toEqual([..._test.DEFAULT_SUPPORTED_MODEL_KEYS]);
+		}
 		expect(_test.migrateSupportedModelKeys(["openai/gpt-5.4"])).toEqual(["openai/gpt-5.4"]);
 		expect(_test.migrateSupportedModelKeys(undefined)).toBeUndefined();
 	});
