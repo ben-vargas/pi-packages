@@ -101,7 +101,7 @@ When multiple sources are configured, pi checks in this order:
 
 ## Requirements
 
-- pi v0.70.2 or later
+- pi v0.77.0 or later
 - A Synthetic API key from [synthetic.new](https://synthetic.new)
 
 ## Notes

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-07-16
+
+### Fixed
+- Declared the direct `@earendil-works/pi-tui` peer dependency used by the interactive model selector and quota commands, validated against Pi 0.80.9.
+
 ## [1.2.0] - 2026-07-12
 
 ### Added
