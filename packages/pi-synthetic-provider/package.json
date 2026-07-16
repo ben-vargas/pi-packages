@@ -1,6 +1,6 @@
 {
   "name": "@benvargas/pi-synthetic-provider",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Synthetic (synthetic.new) model provider for pi - Dynamic model fetching with reasoning, vision, and tools support",
   "keywords": [
     "pi",
@@ -29,7 +29,8 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": ">=0.77.0"
+    "@earendil-works/pi-coding-agent": ">=0.77.0",
+    "@earendil-works/pi-tui": ">=0.77.0"
   },
   "repository": {
     "type": "git",

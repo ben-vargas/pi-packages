@@ -40,6 +40,7 @@ function createMockPi() {
 		registerCommand: vi.fn(),
 		registerFlag: vi.fn(),
 		registerMessageRenderer: vi.fn(),
+		registerEntryRenderer: vi.fn(),
 		registerProvider: vi.fn(),
 		registerShortcut: vi.fn(),
 		registerTool: vi.fn(),
@@ -802,7 +803,7 @@ describe("pi-claude-code-use", () => {
 	// Capture shim
 	// ----------------------------------------------------------------
 
-	it("does not forward flag registration to realPi and gates flag access through the capture shim", () => {
+	it("suppresses duplicate registration while gating flags through the capture shim", () => {
 		const pi = {
 			...createMockPi(),
 			getFlag: vi.fn((_name: string) => "test-value"),
@@ -821,6 +822,9 @@ describe("pi-claude-code-use", () => {
 
 		// Unregistered flags still return undefined through shim
 		expect(shim.getFlag("other-flag")).toBeUndefined();
+
+		shim.registerEntryRenderer("captured-entry", () => undefined);
+		expect(pi.registerEntryRenderer).not.toHaveBeenCalled();
 	});
 
 	// ----------------------------------------------------------------
@@ -913,11 +917,12 @@ describe("pi-claude-code-use", () => {
 			writeFileSync(
 				join(extDir, "index.js"),
 				[
-					'import { StringEnum } from "@earendil-works/pi-ai";',
+					'import { StringEnum } from "@mariozechner/pi-ai";',
 					'import { DEFAULT_MAX_BYTES } from "@earendil-works/pi-coding-agent";',
 					'import { Type } from "typebox";',
 					"const schema = Type.Object({ q: StringEnum(['web']) });",
 					"export default function companion(pi) {",
+					"  pi.registerEntryRenderer('test-entry', () => undefined);",
 					"  pi.registerTool({",
 					'    name: "web_search_exa",',
 					"    description: 'Search web ' + String(DEFAULT_MAX_BYTES),",
@@ -940,6 +945,7 @@ describe("pi-claude-code-use", () => {
 			});
 
 			expect(pi.registerTool).toHaveBeenCalledWith(expect.objectContaining({ name: "mcp__exa__web_search" }));
+			expect(pi.registerEntryRenderer).not.toHaveBeenCalled();
 		} finally {
 			rmSync(tempParent, { recursive: true, force: true });
 		}

@@ -521,6 +521,8 @@ function buildCaptureShim(realPi: ExtensionAPI, captured: Map<string, ToolRegist
 		registerCommand() {},
 		registerShortcut() {},
 		registerMessageRenderer() {},
+		// Tool capture must not duplicate display-only renderer registrations.
+		registerEntryRenderer() {},
 		registerProvider() {},
 		unregisterProvider() {},
 		sendMessage() {},
@@ -556,7 +558,7 @@ function buildCaptureShim(realPi: ExtensionAPI, captured: Map<string, ToolRegist
 			realPi.setThinkingLevel(level);
 		},
 		events: realPi.events,
-	} as ExtensionAPI;
+	} satisfies ExtensionAPI;
 }
 
 async function captureCompanionTools(baseDir: string, realPi: ExtensionAPI): Promise<Map<string, ToolRegistration>> {

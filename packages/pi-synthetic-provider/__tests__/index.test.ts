@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import type { ExtensionAPI, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import syntheticProvider, { getFallbackModels } from "../extensions/index.js";
@@ -82,6 +83,15 @@ afterEach(() => {
 });
 
 describe("pi-synthetic-provider", () => {
+	it("declares direct Pi runtime imports as peer dependencies", () => {
+		const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf-8"));
+
+		expect(manifest.peerDependencies).toMatchObject({
+			"@earendil-works/pi-coding-agent": ">=0.77.0",
+			"@earendil-works/pi-tui": ">=0.77.0",
+		});
+	});
+
 	it("registers live startup provider and commands", async () => {
 		stubModelsFetch();
 		const mockPi = createMockPi();

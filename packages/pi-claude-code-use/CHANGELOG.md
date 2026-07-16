@@ -7,6 +7,12 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-07-16
+
+### Fixed
+- Added Pi 0.80.8+ `registerEntryRenderer` support to the companion capture shim while suppressing duplicate renderer registrations, validated against Pi 0.80.9.
+- Added regression coverage for entry-renderer registration and legacy Pi namespace aliases during companion tool capture.
+
 ## [1.0.4] - 2026-05-21
 
 ### Added
