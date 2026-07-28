@@ -7,30 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-- `syn:*` permalinks now receive their target model's reasoning-effort overrides during live catalog discovery, resolved through the row's `hugging_face_id`. Previously every permalink fell through to the shared compat with `supportsReasoningEffort: false`, so pi still displayed thinking levels — `reasoning: true` makes `off` through `high` selectable without a `thinkingLevelMap` — but the OpenAI-completions transport emitted no `reasoning_effort` for any of them. Every level, including `off`, silently left the model at Synthetic's server-side default. Live probes of all four permalink routes confirm an alias behaves exactly like its target, including `syn:small:text` inheriting GLM-4.7-Flash's HTTP 400 rejection of `max`.
-- `REASONING_OVERRIDES` is now a `Map`. As a plain object, a catalog id of `constructor`, `toString`, or similar resolved an inherited property to something truthy, which would then be spread into a model config.
+## [1.2.2] - 2026-07-28
+
+### Added
+- Added `hf:moonshotai/Kimi-K3` to fallback models with thinking-level support, verified against live `reasoning_effort` probes: `off` → `none`, `medium` → `medium`, `high` → `high`, `xhigh` → `max`. Unlike Kimi-K2.7-Code, K3 returns clean content at `none` and `low` rather than leaking raw thinking tags, so `off` is selectable. `low`/`minimal` stay hidden because the provider-side `low` value disables reasoning outright, matching the treatment of the other reasoning models.
 
 ### Changed
 - Permalink resolution fails closed. An unknown, absent, or already-prefixed `hugging_face_id`, or a row whose explicit `supported_features` omits `reasoning`, yields the shared compat and emits no `reasoning_effort` at all — sending a value the backend rejects fails the entire request, which is worse than running at the default effort. The alias row's own capability list outranks its target's probed map.
 - `getSyntheticModelOverrides` takes an optional second `SyntheticModel` argument. Existing single-argument callers, including deep-import consumers, are unaffected.
 - Offline fallback permalinks deliberately keep the shared compat and no `thinkingLevelMap`: without a catalog row there is no way to know the alias's current target, and a stale map would be a guess that can fail every request. They still set `reasoning: true`, so pi continues to display levels `off` through `high` for them; those selections simply emit no `reasoning_effort`. This is now documented rather than implied by a test comment that mislabeled four reasoning models as "non-reasoning".
 - Live permalink resolution follows a re-point only when the new target is already in the verified override table. Those maps come from live probing and cannot be derived from `supported_features`, which reports that a model reasons but not which effort values it accepts. A re-point to an unprobed model leaves the permalink emitting no `reasoning_effort` until a release adds it.
-
-### Added
-- Added `hf:moonshotai/Kimi-K3` to fallback models with thinking-level support, verified against live `reasoning_effort` probes: `off` → `none`, `medium` → `medium`, `high` → `high`, `xhigh` → `max`. Unlike Kimi-K2.7-Code, K3 returns clean content at `none` and `low` rather than leaking raw thinking tags, so `off` is selectable. `low`/`minimal` stay hidden because the provider-side `low` value disables reasoning outright, matching the treatment of the other reasoning models.
-
-### Removed
-- Removed `hf:moonshotai/Kimi-K2.7-Code` from fallback models and from the reasoning-override table. Synthetic retired it from the catalog alongside the K3 launch, earlier than the launch announcement suggested.
+- Re-pointed the `syn:large:vision` fallback entry from Kimi K2.7-Code to Kimi K3: 512K context (was 256K) and $3.00/$15.00 pricing (was $0.95/$4.00). Sessions pinned to the permalink pick this up automatically.
+- Refreshed all fallback pricing and context windows against the live `always_on` catalog as of 2026-07-28. `syn:large:text` and GLM 5.2 drop to $1.00/$3.00 (were $1.40/$4.40).
 
 ### Deprecated
 - `KIMI_K27_CODE_MODEL_ID` is deprecated but still exported with its original value. The model it names is gone, so it no longer appears in the fallback list or the reasoning-override table, but `extensions/` ships in the published package and removing the named export outright would break deep imports. Use `KIMI_K3_MODEL_ID`, or the `syn:large:vision` permalink that Synthetic re-pointed to K3.
 
-### Changed
-- Re-pointed the `syn:large:vision` fallback entry from Kimi K2.7-Code to Kimi K3: 512K context (was 256K) and $3.00/$15.00 pricing (was $0.95/$4.00). Sessions pinned to the permalink pick this up automatically.
-- Refreshed all fallback pricing and context windows against the live `always_on` catalog as of 2026-07-28. `syn:large:text` and GLM 5.2 drop to $1.00/$3.00 (were $1.40/$4.40).
+### Removed
+- Removed `hf:moonshotai/Kimi-K2.7-Code` from fallback models and from the reasoning-override table. Synthetic retired it from the catalog alongside the K3 launch, earlier than the launch announcement suggested.
 
 ### Fixed
+- `syn:*` permalinks now receive their target model's reasoning-effort overrides during live catalog discovery, resolved through the row's `hugging_face_id`. Previously every permalink fell through to the shared compat with `supportsReasoningEffort: false`, so pi still displayed thinking levels — `reasoning: true` makes `off` through `high` selectable without a `thinkingLevelMap` — but the OpenAI-completions transport emitted no `reasoning_effort` for any of them. Every level, including `off`, silently left the model at Synthetic's server-side default. Live probes of all four permalink routes confirm an alias behaves exactly like its target, including `syn:small:text` inheriting GLM-4.7-Flash's HTTP 400 rejection of `max`.
+- `REASONING_OVERRIDES` is now a `Map`. As a plain object, a catalog id of `constructor`, `toString`, or similar resolved an inherited property to something truthy, which would then be spread into a model config.
 - Fallback `cacheRead` prices now use the catalog's `input_cache_reads` rate instead of mirroring the input price. Every fallback entry was affected. On `hf:zai-org/GLM-5.2`, an entry that already existed in 1.2.1, cached reads were billed at $1.40 rather than $0.16 — a ~8.75x cost-tracking overstatement whenever the fallback path was in use. Live catalog discovery already read the correct field, so only fallback sessions were affected.
 
 ## [1.2.1] - 2026-07-16
