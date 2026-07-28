@@ -147,6 +147,143 @@ describe("pi-synthetic-provider", () => {
 		}
 	});
 
+	it("resolves syn:* permalink overrides through the catalog target", async () => {
+		const permalinks = [
+			["syn:large:text", "zai-org/GLM-5.2"],
+			["syn:small:text", "zai-org/GLM-4.7-Flash"],
+			["syn:large:vision", "moonshotai/Kimi-K3"],
+			["syn:small:vision", "Qwen/Qwen3.6-27B"],
+		] as const;
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue({
+				ok: true,
+				json: async () => ({
+					data: permalinks.map(([id, huggingFaceId]) => ({
+						id,
+						name: id,
+						hugging_face_id: huggingFaceId,
+						always_on: true,
+						supported_features: ["tools", "reasoning"],
+						input_modalities: ["text"],
+						context_length: 524288,
+						max_output_length: 65536,
+						pricing: { prompt: "1", completion: "3" },
+					})),
+				}),
+			}),
+		);
+		const mockPi = createMockPi();
+		await syntheticProvider(mockPi as unknown as ExtensionAPI);
+
+		const models = mockPi.registerProvider.mock.calls[0]?.[1].models as ProviderModelConfig[];
+		for (const [id, huggingFaceId] of permalinks) {
+			const model = models.find((candidate) => candidate.id === id);
+			expect(model).toMatchObject({ reasoning: true, compat: { supportsReasoningEffort: true } });
+			expect(model?.thinkingLevelMap).toEqual(
+				REASONING_MODEL_MAPS[`hf:${huggingFaceId}` as keyof typeof REASONING_MODEL_MAPS],
+			);
+		}
+	});
+
+	it("leaves permalinks bare when the target cannot be resolved safely", async () => {
+		// Each row fails closed for a different reason: unknown target, absent
+		// target, an already-prefixed value, and an explicit non-reasoning
+		// capability list that outranks the target's probed map.
+		const rows = [
+			{ id: "syn:large:vision", hugging_face_id: "moonshotai/Kimi-K9", supported_features: ["tools", "reasoning"] },
+			{ id: "syn:large:text", supported_features: ["tools", "reasoning"] },
+			{ id: "syn:small:vision", hugging_face_id: "hf:Qwen/Qwen3.6-27B", supported_features: ["tools", "reasoning"] },
+			{ id: "syn:small:text", hugging_face_id: "zai-org/GLM-4.7-Flash", supported_features: ["tools"] },
+		];
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue({
+				ok: true,
+				json: async () => ({
+					data: rows.map((row) => ({
+						...row,
+						name: row.id,
+						always_on: true,
+						input_modalities: ["text"],
+						context_length: 524288,
+						max_output_length: 65536,
+						pricing: { prompt: "1", completion: "3" },
+					})),
+				}),
+			}),
+		);
+		const mockPi = createMockPi();
+		await syntheticProvider(mockPi as unknown as ExtensionAPI);
+
+		const models = mockPi.registerProvider.mock.calls[0]?.[1].models as ProviderModelConfig[];
+		for (const row of rows) {
+			const model = models.find((candidate) => candidate.id === row.id);
+			expect(model).toMatchObject({ compat: { supportsReasoningEffort: false } });
+			expect(model?.thinkingLevelMap).toBeUndefined();
+		}
+	});
+
+	it("does not alias a pinned hf: id through a mismatched catalog target", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue({
+				ok: true,
+				json: async () => ({
+					data: [
+						{
+							id: "hf:openai/gpt-oss-120b",
+							name: "openai/gpt-oss-120b",
+							hugging_face_id: "moonshotai/Kimi-K3",
+							always_on: true,
+							supported_features: ["tools", "reasoning"],
+							input_modalities: ["text"],
+							context_length: 131072,
+							max_output_length: 65536,
+							pricing: { prompt: "1", completion: "3" },
+						},
+					],
+				}),
+			}),
+		);
+		const mockPi = createMockPi();
+		await syntheticProvider(mockPi as unknown as ExtensionAPI);
+
+		const models = mockPi.registerProvider.mock.calls[0]?.[1].models as ProviderModelConfig[];
+		const model = models.find((candidate) => candidate.id === "hf:openai/gpt-oss-120b");
+		expect(model).toMatchObject({ compat: { supportsReasoningEffort: false } });
+		expect(model?.thinkingLevelMap).toBeUndefined();
+	});
+
+	it("does not resolve inherited object keys as overrides", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue({
+				ok: true,
+				json: async () => ({
+					data: ["constructor", "toString", "__proto__"].map((id) => ({
+						id,
+						name: id,
+						always_on: true,
+						supported_features: ["tools", "reasoning"],
+						input_modalities: ["text"],
+						context_length: 131072,
+						max_output_length: 65536,
+						pricing: { prompt: "1", completion: "3" },
+					})),
+				}),
+			}),
+		);
+		const mockPi = createMockPi();
+		await syntheticProvider(mockPi as unknown as ExtensionAPI);
+
+		const models = mockPi.registerProvider.mock.calls[0]?.[1].models as ProviderModelConfig[];
+		for (const model of models) {
+			expect(model).toMatchObject({ compat: { supportsReasoningEffort: false } });
+			expect(model?.thinkingLevelMap).toBeUndefined();
+		}
+	});
+
 	it("keeps reasoning overrides enabled when the live catalog omits supported_features", async () => {
 		const liveModel = (id: string, name: string) => ({
 			id,

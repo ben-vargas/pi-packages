@@ -122,7 +122,12 @@ describe("pi-synthetic-provider helpers", () => {
 			expect(model?.thinkingLevelMap).toEqual(thinkingLevelMap);
 		}
 
-		// Non-reasoning fallbacks keep default compat
+		// These are NOT non-reasoning models — all four permalinks resolve to
+		// reasoning models and gpt-oss-120b advertises reasoning too. They keep the
+		// default compat deliberately: offline there is no catalog row naming the
+		// permalink's current target, and a stale effort map can fail every request
+		// with HTTP 400, which is worse than running at the server-side default.
+		// Live discovery resolves these through hugging_face_id; see index.test.ts.
 		for (const id of [
 			"syn:large:text",
 			"syn:small:text",
