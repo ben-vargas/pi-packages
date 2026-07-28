@@ -5,7 +5,7 @@
 import type { ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import { SYNTHETIC_COMPAT, SYNTHETIC_MODELS_ENDPOINT } from "./config.js";
 import { parsePrice } from "./formatting.js";
-import type { SyntheticModelsResponse } from "./types.js";
+import type { SyntheticModel, SyntheticModelsResponse } from "./types.js";
 
 export const GLM_5_2_MODEL_ID = "hf:zai-org/GLM-5.2";
 export const GLM_4_7_FLASH_MODEL_ID = "hf:zai-org/GLM-4.7-Flash";
@@ -143,20 +143,61 @@ const NEMOTRON_3_SUPER_REASONING_OVERRIDES = {
 	},
 } satisfies SyntheticModelOverrides;
 
-const REASONING_OVERRIDES: Record<string, SyntheticModelOverrides> = {
-	[GLM_5_2_MODEL_ID]: GLM_5_2_REASONING_OVERRIDES,
-	[GLM_4_7_FLASH_MODEL_ID]: GLM_4_7_FLASH_REASONING_OVERRIDES,
-	[KIMI_K3_MODEL_ID]: KIMI_K3_REASONING_OVERRIDES,
-	[QWEN_3_6_27B_MODEL_ID]: QWEN_3_6_27B_REASONING_OVERRIDES,
-	[MINIMAX_M3_MODEL_ID]: MINIMAX_M3_REASONING_OVERRIDES,
-	[NEMOTRON_3_SUPER_MODEL_ID]: NEMOTRON_3_SUPER_REASONING_OVERRIDES,
-};
+/**
+ * A `Map` rather than a plain object: `REASONING_OVERRIDES[modelId]` on an object
+ * literal resolves inherited keys, so a catalog id of `constructor` or `toString`
+ * would return a truthy non-override and be spread into a model config.
+ */
+const REASONING_OVERRIDES = new Map<string, SyntheticModelOverrides>([
+	[GLM_5_2_MODEL_ID, GLM_5_2_REASONING_OVERRIDES],
+	[GLM_4_7_FLASH_MODEL_ID, GLM_4_7_FLASH_REASONING_OVERRIDES],
+	[KIMI_K3_MODEL_ID, KIMI_K3_REASONING_OVERRIDES],
+	[QWEN_3_6_27B_MODEL_ID, QWEN_3_6_27B_REASONING_OVERRIDES],
+	[MINIMAX_M3_MODEL_ID, MINIMAX_M3_REASONING_OVERRIDES],
+	[NEMOTRON_3_SUPER_MODEL_ID, NEMOTRON_3_SUPER_REASONING_OVERRIDES],
+]);
 
-export function getSyntheticModelOverrides(modelId: string): SyntheticModelOverrides {
-	const override = REASONING_OVERRIDES[modelId];
-	if (override) {
-		return override;
+/** Synthetic's rotating permalink ids, e.g. `syn:large:vision`. */
+const PERMALINK_ID_PREFIX = "syn:";
+
+/**
+ * Resolve the reasoning-effort overrides for a catalog id.
+ *
+ * Pinned `hf:*` ids match the table directly. Permalink `syn:*` ids name no model
+ * of their own — Synthetic re-points them as the lineup rotates — so they resolve
+ * through the catalog row's `hugging_face_id`, which names the current target.
+ * Live probes confirm an alias request behaves exactly like a request to its
+ * target, including inheriting the target's rejection of unsupported values.
+ *
+ * Resolution fails closed. An unknown, absent, or already-prefixed target, or a
+ * row whose `supported_features` explicitly omits `reasoning`, yields the shared
+ * compat and no `reasoning_effort` is emitted at all. That is deliberate: sending
+ * a value the backend rejects fails the whole request with HTTP 400, which is
+ * strictly worse than running at the server-side default effort.
+ *
+ * The `model` parameter is optional so existing single-argument callers — the
+ * fallback catalog and any deep-import consumer — keep working unchanged.
+ */
+export function getSyntheticModelOverrides(modelId: string, model?: SyntheticModel): SyntheticModelOverrides {
+	const direct = REASONING_OVERRIDES.get(modelId);
+	if (direct) {
+		return direct;
 	}
+
+	if (model && modelId.startsWith(PERMALINK_ID_PREFIX)) {
+		// An explicit capability list that omits reasoning outranks the target's
+		// probed map: the alias row is the authority on what this route accepts.
+		const declaresNoReasoning =
+			Array.isArray(model.supported_features) && !model.supported_features.includes("reasoning");
+		const target = model.hugging_face_id;
+		if (!declaresNoReasoning && typeof target === "string" && target && !target.includes(":")) {
+			const aliased = REASONING_OVERRIDES.get(`hf:${target}`);
+			if (aliased) {
+				return aliased;
+			}
+		}
+	}
+
 	return { compat: SYNTHETIC_COMPAT };
 }
 
@@ -247,7 +288,7 @@ export async function fetchSyntheticModels(
 				},
 				contextWindow: model.context_length || 128000,
 				maxTokens: model.max_output_length || 32768,
-				...getSyntheticModelOverrides(modelId),
+				...getSyntheticModelOverrides(modelId, model),
 			});
 		}
 
@@ -275,6 +316,13 @@ export async function fetchSyntheticModels(
  *
  * Pricing format: $/million tokens. `cacheRead` tracks the catalog's
  * `input_cache_reads` rate, which is well below the input rate on every model.
+ *
+ * The `syn:*` entries deliberately carry no `thinkingLevelMap`. Offline there is
+ * no catalog row naming the permalink's current target, so any effort map here
+ * would be a guess that goes stale the moment Synthetic re-points the alias — and
+ * a wrong map fails every request with HTTP 400 rather than merely running at the
+ * default effort. Live discovery resolves permalinks properly via
+ * `hugging_face_id`; see `getSyntheticModelOverrides`.
  */
 export function getFallbackModels(): ProviderModelConfig[] {
 	return [

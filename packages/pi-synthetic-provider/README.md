@@ -92,6 +92,16 @@ Prices are $ per million tokens, current as of 2026-07-28.
 
 The `syn:*` ids are permalinks that Synthetic re-points as models rotate, so configs using them survive model retirements — `syn:large:vision` moved from Kimi K2.7-Code to Kimi K3 in this release. The `hf:*` ids pin a specific model and break when it is retired.
 
+### Thinking levels on permalinks
+
+When models are discovered live, a `syn:*` permalink inherits its current target's thinking-level support, resolved from the catalog's `hugging_face_id`. Selecting `syn:large:vision` gives you the same levels as `hf:moonshotai/Kimi-K3`.
+
+This follows a re-point automatically **only when the new target is one of the models already in the verified override table**. Those maps come from live probing — which `reasoning_effort` values a model accepts, and which silently disable reasoning — and cannot be derived from the catalog, since `supported_features` reports only that a model reasons, not how it can be steered. If Synthetic re-points a permalink to a model this package has not probed, the permalink stops emitting `reasoning_effort` until a release adds it.
+
+That is the deliberate failure mode: when the target is unrecognized, or the catalog row declares no reasoning support, the permalink emits nothing rather than guessing. A rejected value fails the whole request, while omitting it simply runs at the server-side default.
+
+In the offline fallback list, permalinks never emit `reasoning_effort` at all — with no catalog row there is no way to know what the alias currently points at. Note that pi still *displays* thinking levels `off` through `high` for them, because those entries set `reasoning: true`; the selections just have no effect on the request.
+
 Kimi K3 is at beta launch pricing; Synthetic expects to lower it as engine optimization improves. Run `/synthetic-models` inside pi for the live catalog.
 
 ## API Key Priority
