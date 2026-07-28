@@ -9,10 +9,20 @@ import type { SyntheticModelsResponse } from "./types.js";
 
 export const GLM_5_2_MODEL_ID = "hf:zai-org/GLM-5.2";
 export const GLM_4_7_FLASH_MODEL_ID = "hf:zai-org/GLM-4.7-Flash";
-export const KIMI_K27_CODE_MODEL_ID = "hf:moonshotai/Kimi-K2.7-Code";
+export const KIMI_K3_MODEL_ID = "hf:moonshotai/Kimi-K3";
 export const QWEN_3_6_27B_MODEL_ID = "hf:Qwen/Qwen3.6-27B";
 export const MINIMAX_M3_MODEL_ID = "hf:MiniMaxAI/MiniMax-M3";
 export const NEMOTRON_3_SUPER_MODEL_ID = "hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4";
+
+/**
+ * @deprecated Synthetic retired this model alongside the Kimi K3 launch, so it no
+ * longer appears in the catalog, in the fallback list, or in the reasoning-effort
+ * table. The constant is retained only so deep imports of `extensions/models.js`
+ * keep resolving — `extensions/` ships in the published package. Use
+ * {@link KIMI_K3_MODEL_ID}, or the `syn:large:vision` permalink, which Synthetic
+ * re-pointed from this model to K3.
+ */
+export const KIMI_K27_CODE_MODEL_ID = "hf:moonshotai/Kimi-K2.7-Code";
 
 type SyntheticModelOverrides = Pick<ProviderModelConfig, "compat"> &
 	Partial<Pick<ProviderModelConfig, "reasoning" | "thinkingLevelMap">>;
@@ -21,14 +31,15 @@ type SyntheticModelOverrides = Pick<ProviderModelConfig, "compat"> &
  * Per-model reasoning-effort support (https://github.com/ben-vargas/pi-packages/issues/21).
  *
  * Live Synthetic API probes verified which `reasoning_effort` values are accepted
- * and whether they engage reasoning. GLM-5.2, GLM-4.7-Flash, Qwen3.6-27B, and
- * Nemotron map off to `none`; their `low` value also disables reasoning, so pi's
- * minimal and low levels are hidden. GLM-4.7-Flash and Nemotron reject `max`,
- * while GLM-5.2, Kimi-K2.7-Code, and Qwen accept it for xhigh.
+ * and whether they engage reasoning. GLM-5.2, GLM-4.7-Flash, Qwen3.6-27B,
+ * Nemotron, and Kimi-K3 map off to `none`; their `low` value also disables
+ * reasoning, so pi's minimal and low levels are hidden. GLM-4.7-Flash and
+ * Nemotron reject `max`, while GLM-5.2, Kimi-K3, and Qwen accept it for xhigh.
  *
- * Kimi's `none` and `low` values leak raw thinking tags, so only its cleanly
- * separated medium through xhigh levels are exposed. MiniMax reasons at every
- * probed value, so off is hidden and only its verified medium tier is exposed.
+ * Kimi-K3 supersedes Kimi-K2.7-Code here. K2.7-Code leaked raw thinking tags at
+ * `none`/`low`, which forced its `off` level to stay hidden; K3 returns clean
+ * content at both, so `off` is selectable. MiniMax reasons at every probed
+ * value, so off is hidden and only its verified medium tier is exposed.
  * Relative depth between accepted tiers was not established. `null` hides a
  * level from pi's thinking-level cycling.
  *
@@ -68,14 +79,14 @@ const GLM_4_7_FLASH_REASONING_OVERRIDES = {
 	},
 } satisfies SyntheticModelOverrides;
 
-const KIMI_K27_CODE_REASONING_OVERRIDES = {
+const KIMI_K3_REASONING_OVERRIDES = {
 	reasoning: true,
 	compat: {
 		...SYNTHETIC_COMPAT,
 		supportsReasoningEffort: true,
 	},
 	thinkingLevelMap: {
-		off: null,
+		off: "none",
 		minimal: null,
 		low: null,
 		medium: "medium",
@@ -135,7 +146,7 @@ const NEMOTRON_3_SUPER_REASONING_OVERRIDES = {
 const REASONING_OVERRIDES: Record<string, SyntheticModelOverrides> = {
 	[GLM_5_2_MODEL_ID]: GLM_5_2_REASONING_OVERRIDES,
 	[GLM_4_7_FLASH_MODEL_ID]: GLM_4_7_FLASH_REASONING_OVERRIDES,
-	[KIMI_K27_CODE_MODEL_ID]: KIMI_K27_CODE_REASONING_OVERRIDES,
+	[KIMI_K3_MODEL_ID]: KIMI_K3_REASONING_OVERRIDES,
 	[QWEN_3_6_27B_MODEL_ID]: QWEN_3_6_27B_REASONING_OVERRIDES,
 	[MINIMAX_M3_MODEL_ID]: MINIMAX_M3_REASONING_OVERRIDES,
 	[NEMOTRON_3_SUPER_MODEL_ID]: NEMOTRON_3_SUPER_REASONING_OVERRIDES,
@@ -256,9 +267,14 @@ export async function fetchSyntheticModels(
 /**
  * Fallback models if API fetch fails.
  * Data sourced from: authenticated GET https://api.synthetic.new/openai/v1/models
- * Last updated: 2026-07-04
+ * Last updated: 2026-07-28
  *
- * Pricing format: $/million tokens
+ * Mirrors the live `always_on` catalog. The `syn:*` permalinks are stable
+ * aliases Synthetic re-points as models rotate; `syn:large:vision` now resolves
+ * to Kimi K3 (was Kimi K2.7-Code, since retired) and `syn:large:text` to GLM 5.2.
+ *
+ * Pricing format: $/million tokens. `cacheRead` tracks the catalog's
+ * `input_cache_reads` rate, which is well below the input rate on every model.
  */
 export function getFallbackModels(): ProviderModelConfig[] {
 	return [
@@ -268,9 +284,9 @@ export function getFallbackModels(): ProviderModelConfig[] {
 			reasoning: true,
 			input: ["text"],
 			cost: {
-				input: 1.4,
-				output: 4.4,
-				cacheRead: 1.4,
+				input: 1,
+				output: 3,
+				cacheRead: 0.16,
 				cacheWrite: 0,
 			},
 			contextWindow: 524288,
@@ -285,7 +301,7 @@ export function getFallbackModels(): ProviderModelConfig[] {
 			cost: {
 				input: 0.1,
 				output: 0.5,
-				cacheRead: 0.1,
+				cacheRead: 0.02,
 				cacheWrite: 0,
 			},
 			contextWindow: 196608,
@@ -298,12 +314,12 @@ export function getFallbackModels(): ProviderModelConfig[] {
 			reasoning: true,
 			input: ["text", "image"],
 			cost: {
-				input: 0.95,
-				output: 4,
-				cacheRead: 0.95,
+				input: 3,
+				output: 15,
+				cacheRead: 0.45,
 				cacheWrite: 0,
 			},
-			contextWindow: 262144,
+			contextWindow: 524288,
 			maxTokens: 65536,
 			compat: SYNTHETIC_COMPAT,
 		},
@@ -315,7 +331,7 @@ export function getFallbackModels(): ProviderModelConfig[] {
 			cost: {
 				input: 0.45,
 				output: 3.6,
-				cacheRead: 0.45,
+				cacheRead: 0.09,
 				cacheWrite: 0,
 			},
 			contextWindow: 262144,
@@ -330,7 +346,7 @@ export function getFallbackModels(): ProviderModelConfig[] {
 			cost: {
 				input: 0.1,
 				output: 0.1,
-				cacheRead: 0.1,
+				cacheRead: 0.02,
 				cacheWrite: 0,
 			},
 			contextWindow: 131072,
@@ -343,9 +359,9 @@ export function getFallbackModels(): ProviderModelConfig[] {
 			reasoning: true,
 			input: ["text"],
 			cost: {
-				input: 1.4,
-				output: 4.4,
-				cacheRead: 1.4,
+				input: 1,
+				output: 3,
+				cacheRead: 0.16,
 				cacheWrite: 0,
 			},
 			contextWindow: 524288,
@@ -353,29 +369,29 @@ export function getFallbackModels(): ProviderModelConfig[] {
 			...getSyntheticModelOverrides(GLM_5_2_MODEL_ID),
 		},
 		{
-			id: "hf:moonshotai/Kimi-K2.7-Code",
-			name: "moonshotai/Kimi-K2.7-Code",
+			id: KIMI_K3_MODEL_ID,
+			name: "moonshotai/Kimi-K3",
 			reasoning: true,
 			input: ["text", "image"],
 			cost: {
-				input: 0.95,
-				output: 4,
-				cacheRead: 0.95,
+				input: 3,
+				output: 15,
+				cacheRead: 0.45,
 				cacheWrite: 0,
 			},
-			contextWindow: 262144,
+			contextWindow: 524288,
 			maxTokens: 65536,
-			...getSyntheticModelOverrides(KIMI_K27_CODE_MODEL_ID),
+			...getSyntheticModelOverrides(KIMI_K3_MODEL_ID),
 		},
 		{
-			id: "hf:Qwen/Qwen3.6-27B",
+			id: QWEN_3_6_27B_MODEL_ID,
 			name: "Qwen/Qwen3.6-27B",
 			reasoning: true,
 			input: ["text", "image"],
 			cost: {
 				input: 0.45,
 				output: 3.6,
-				cacheRead: 0.45,
+				cacheRead: 0.09,
 				cacheWrite: 0,
 			},
 			contextWindow: 262144,
@@ -383,14 +399,14 @@ export function getFallbackModels(): ProviderModelConfig[] {
 			...getSyntheticModelOverrides(QWEN_3_6_27B_MODEL_ID),
 		},
 		{
-			id: "hf:MiniMaxAI/MiniMax-M3",
+			id: MINIMAX_M3_MODEL_ID,
 			name: "MiniMaxAI/MiniMax-M3",
 			reasoning: true,
 			input: ["text", "image"],
 			cost: {
 				input: 0.6,
 				output: 1.2,
-				cacheRead: 0.6,
+				cacheRead: 0.12,
 				cacheWrite: 0,
 			},
 			contextWindow: 262144,
@@ -398,14 +414,14 @@ export function getFallbackModels(): ProviderModelConfig[] {
 			...getSyntheticModelOverrides(MINIMAX_M3_MODEL_ID),
 		},
 		{
-			id: "hf:zai-org/GLM-4.7-Flash",
+			id: GLM_4_7_FLASH_MODEL_ID,
 			name: "zai-org/GLM-4.7-Flash",
 			reasoning: true,
 			input: ["text"],
 			cost: {
 				input: 0.1,
 				output: 0.5,
-				cacheRead: 0.1,
+				cacheRead: 0.02,
 				cacheWrite: 0,
 			},
 			contextWindow: 196608,
@@ -413,14 +429,14 @@ export function getFallbackModels(): ProviderModelConfig[] {
 			...getSyntheticModelOverrides(GLM_4_7_FLASH_MODEL_ID),
 		},
 		{
-			id: "hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4",
+			id: NEMOTRON_3_SUPER_MODEL_ID,
 			name: "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4",
 			reasoning: true,
 			input: ["text"],
 			cost: {
 				input: 0.3,
 				output: 1,
-				cacheRead: 0.3,
+				cacheRead: 0.06,
 				cacheWrite: 0,
 			},
 			contextWindow: 262144,

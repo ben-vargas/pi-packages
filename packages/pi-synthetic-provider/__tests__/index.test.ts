@@ -15,8 +15,8 @@ const REASONING_MODEL_MAPS = {
 		high: "high",
 		xhigh: null,
 	},
-	"hf:moonshotai/Kimi-K2.7-Code": {
-		off: null,
+	"hf:moonshotai/Kimi-K3": {
+		off: "none",
 		minimal: null,
 		low: null,
 		medium: "medium",

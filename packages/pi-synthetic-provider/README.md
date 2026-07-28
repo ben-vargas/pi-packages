@@ -7,7 +7,7 @@
 - **Dynamic model discovery** -- models fetched live from the Synthetic API at each session start
 - **OpenAI Completions API** -- reuses pi's built-in streaming, no custom implementation
 - **Tool calling** -- full support via OpenAI-compatible tool use
-- **Vision support** -- image input for models that support it (e.g., Kimi-K2.7-Code)
+- **Vision support** -- image input for models that support it (e.g., Kimi-K3)
 - **Reasoning support** -- extended thinking for reasoning-capable models
 - **Cost tracking** -- accurate per-token pricing parsed from the API
 - **Graceful degradation** -- fallback model list if the API is unreachable
@@ -49,7 +49,7 @@ Add to `~/.pi/agent/auth.json`:
 ### Option 3: Runtime CLI Flag
 
 ```bash
-pi --model synthetic/hf:moonshotai/Kimi-K2.7-Code --api-key syn_your_key_here
+pi --model synthetic/hf:moonshotai/Kimi-K3 --api-key syn_your_key_here
 ```
 
 ## Usage
@@ -59,10 +59,10 @@ pi --model synthetic/hf:moonshotai/Kimi-K2.7-Code --api-key syn_your_key_here
 pi /model
 
 # Direct model selection
-pi --model synthetic/hf:moonshotai/Kimi-K2.7-Code
+pi --model synthetic/hf:moonshotai/Kimi-K3
 
 # Or use provider + model flags separately
-pi --provider synthetic --model hf:moonshotai/Kimi-K2.7-Code
+pi --provider synthetic --model hf:moonshotai/Kimi-K3
 ```
 
 ### Extension Command
@@ -74,21 +74,25 @@ pi --provider synthetic --model hf:moonshotai/Kimi-K2.7-Code
 
 Models are fetched at startup from the [Synthetic models endpoint](https://dev.synthetic.new/docs/api/models). If the startup fetch fails, times out after three seconds, or returns no supported models, the provider falls back to the following hardcoded defaults:
 
-| Model | ID | Reasoning | Vision | Context | Max Output |
-|-------|-----|-----------|--------|---------|------------|
-| **Synthetic Large Text** | `syn:large:text` | Yes | No | 524K | 65K |
-| **Synthetic Small Text** | `syn:small:text` | Yes | No | 196K | 65K |
-| **Synthetic Large Vision** | `syn:large:vision` | Yes | Yes | 262K | 65K |
-| **Synthetic Small Vision** | `syn:small:vision` | Yes | Yes | 262K | 65K |
-| **GLM 5.2** | `hf:zai-org/GLM-5.2` | Yes | No | 524K | 65K |
-| **GPT OSS 120B** | `hf:openai/gpt-oss-120b` | Yes | No | 131K | 65K |
-| **Kimi K2.7 Code** | `hf:moonshotai/Kimi-K2.7-Code` | Yes | Yes | 262K | 65K |
-| **Qwen 3.6 27B** | `hf:Qwen/Qwen3.6-27B` | Yes | Yes | 262K | 65K |
-| **MiniMax M3** | `hf:MiniMaxAI/MiniMax-M3` | Yes | Yes | 262K | 65K |
-| **GLM 4.7 Flash** | `hf:zai-org/GLM-4.7-Flash` | Yes | No | 196K | 65K |
-| **Nemotron 3 Super 120B** | `hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4` | Yes | No | 262K | 65K |
+Prices are $ per million tokens, current as of 2026-07-28.
 
-Run `/synthetic-models` inside pi for the live catalog.
+| Model | ID | Reasoning | Vision | Context | Max Output | In / Out / Cache |
+|-------|-----|-----------|--------|---------|------------|------------------|
+| **Synthetic Large Text** | `syn:large:text` | Yes | No | 524K | 65K | 1.00 / 3.00 / 0.16 |
+| **Synthetic Small Text** | `syn:small:text` | Yes | No | 196K | 65K | 0.10 / 0.50 / 0.02 |
+| **Synthetic Large Vision** | `syn:large:vision` | Yes | Yes | 524K | 65K | 3.00 / 15.00 / 0.45 |
+| **Synthetic Small Vision** | `syn:small:vision` | Yes | Yes | 262K | 65K | 0.45 / 3.60 / 0.09 |
+| **GLM 5.2** | `hf:zai-org/GLM-5.2` | Yes | No | 524K | 65K | 1.00 / 3.00 / 0.16 |
+| **GPT OSS 120B** | `hf:openai/gpt-oss-120b` | Yes | No | 131K | 65K | 0.10 / 0.10 / 0.02 |
+| **Kimi K3** | `hf:moonshotai/Kimi-K3` | Yes | Yes | 524K | 65K | 3.00 / 15.00 / 0.45 |
+| **Qwen 3.6 27B** | `hf:Qwen/Qwen3.6-27B` | Yes | Yes | 262K | 65K | 0.45 / 3.60 / 0.09 |
+| **MiniMax M3** | `hf:MiniMaxAI/MiniMax-M3` | Yes | Yes | 262K | 65K | 0.60 / 1.20 / 0.12 |
+| **GLM 4.7 Flash** | `hf:zai-org/GLM-4.7-Flash` | Yes | No | 196K | 65K | 0.10 / 0.50 / 0.02 |
+| **Nemotron 3 Super 120B** | `hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4` | Yes | No | 262K | 65K | 0.30 / 1.00 / 0.06 |
+
+The `syn:*` ids are permalinks that Synthetic re-points as models rotate, so configs using them survive model retirements — `syn:large:vision` moved from Kimi K2.7-Code to Kimi K3 in this release. The `hf:*` ids pin a specific model and break when it is retired.
+
+Kimi K3 is at beta launch pricing; Synthetic expects to lower it as engine optimization improves. Run `/synthetic-models` inside pi for the live catalog.
 
 ## API Key Priority
 

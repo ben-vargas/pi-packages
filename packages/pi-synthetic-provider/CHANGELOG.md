@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Added `hf:moonshotai/Kimi-K3` to fallback models with thinking-level support, verified against live `reasoning_effort` probes: `off` → `none`, `medium` → `medium`, `high` → `high`, `xhigh` → `max`. Unlike Kimi-K2.7-Code, K3 returns clean content at `none` and `low` rather than leaking raw thinking tags, so `off` is selectable. `low`/`minimal` stay hidden because the provider-side `low` value disables reasoning outright, matching the treatment of the other reasoning models.
+
+### Removed
+- Removed `hf:moonshotai/Kimi-K2.7-Code` from fallback models and from the reasoning-override table. Synthetic retired it from the catalog alongside the K3 launch, earlier than the launch announcement suggested.
+
+### Deprecated
+- `KIMI_K27_CODE_MODEL_ID` is deprecated but still exported with its original value. The model it names is gone, so it no longer appears in the fallback list or the reasoning-override table, but `extensions/` ships in the published package and removing the named export outright would break deep imports. Use `KIMI_K3_MODEL_ID`, or the `syn:large:vision` permalink that Synthetic re-pointed to K3.
+
+### Changed
+- Re-pointed the `syn:large:vision` fallback entry from Kimi K2.7-Code to Kimi K3: 512K context (was 256K) and $3.00/$15.00 pricing (was $0.95/$4.00). Sessions pinned to the permalink pick this up automatically.
+- Refreshed all fallback pricing and context windows against the live `always_on` catalog as of 2026-07-28. `syn:large:text` and GLM 5.2 drop to $1.00/$3.00 (were $1.40/$4.40).
+
+### Fixed
+- Fallback `cacheRead` prices now use the catalog's `input_cache_reads` rate instead of mirroring the input price. Every fallback entry was affected. On `hf:zai-org/GLM-5.2`, an entry that already existed in 1.2.1, cached reads were billed at $1.40 rather than $0.16 — a ~8.75x cost-tracking overstatement whenever the fallback path was in use. Live catalog discovery already read the correct field, so only fallback sessions were affected.
+
 ## [1.2.1] - 2026-07-16
 
 ### Fixed
