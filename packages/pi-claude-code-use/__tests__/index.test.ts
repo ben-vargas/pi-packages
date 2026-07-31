@@ -78,6 +78,8 @@ describe("pi-claude-code-use", () => {
 		_test.registeredMcpAliases.clear();
 		_test.autoActivatedAliases.clear();
 		_test.aliasAssignments.clear();
+		_test.registeredAliasRoutes.clear();
+		_test.aliasSourceMeta.clear();
 		_test.setLastManagedToolList(undefined);
 		_test.refreshAliasMap([]);
 	});
@@ -682,6 +684,86 @@ describe("pi-claude-code-use", () => {
 			expect(_test.FLAT_TO_MCP.get("web_search")).toBe("mcp__web_providers__web_search");
 		});
 
+		it("marks freshly registered aliases as auto-activated (pi auto-activates new tools)", () => {
+			const pi = createMockPi();
+			pi.getAllTools.mockReturnValue([
+				mockTool("web_search_exa", { path: "/x/node_modules/@benvargas/pi-exa-mcp/extensions/index.ts" }),
+			]);
+
+			registerAliasesIsolated(pi, tempDir);
+
+			// Pi's registerTool implicitly activates the new alias; provenance must
+			// record it as auto-managed so a non-OAuth sync removes it.
+			expect(_test.autoActivatedAliases.has("mcp__exa_mcp__web_search_exa")).toBe(true);
+
+			pi.getAllTools.mockReturnValue([
+				mockTool("web_search_exa", { path: "/x/node_modules/@benvargas/pi-exa-mcp/extensions/index.ts" }),
+				mockTool("mcp__exa_mcp__web_search_exa"),
+			]);
+			pi.getActiveTools.mockReturnValue(["read", "web_search_exa", "mcp__exa_mcp__web_search_exa"]);
+			_test.syncAliasActivation(pi as unknown as ExtensionAPI, false);
+			expect(pi.setActiveTools).toHaveBeenCalledWith(["read", "web_search_exa"]);
+		});
+
+		it("re-registers an alias when the source tool's schema changes", () => {
+			const pi = createMockPi();
+			const path = "/x/node_modules/@benvargas/pi-exa-mcp/extensions/index.ts";
+			const v1 = mockTool("web_search_exa", { path, description: "v1" });
+			pi.getAllTools.mockReturnValue([v1]);
+			registerAliasesIsolated(pi, tempDir);
+			expect(pi.registerTool).toHaveBeenCalledTimes(1);
+
+			// Same metadata: no re-registration.
+			registerAliasesIsolated(pi, tempDir);
+			expect(pi.registerTool).toHaveBeenCalledTimes(1);
+
+			// Source extension re-registered the tool with new metadata.
+			const v2 = mockTool("web_search_exa", { path, description: "v2" });
+			pi.getAllTools.mockReturnValue([v2]);
+			registerAliasesIsolated(pi, tempDir);
+			expect(pi.registerTool).toHaveBeenCalledTimes(2);
+			expect(pi.registerTool).toHaveBeenLastCalledWith(
+				expect.objectContaining({ name: "mcp__exa_mcp__web_search_exa", description: "v2" }),
+			);
+		});
+
+		it("copies parameters and promptGuidelines onto the alias by identity", () => {
+			const pi = createMockPi();
+			const parameters = { type: "object", properties: { q: { type: "string" } } };
+			const promptGuidelines = ["Prefer batched queries"];
+			pi.getAllTools.mockReturnValue([
+				{
+					...mockTool("web_search_exa", { path: "/x/node_modules/@benvargas/pi-exa-mcp/extensions/index.ts" }),
+					parameters: parameters as never,
+					promptGuidelines,
+				},
+			]);
+
+			registerAliasesIsolated(pi, tempDir);
+
+			const def = pi.registerTool.mock.calls[0]?.[0] as { parameters: unknown; promptGuidelines?: unknown };
+			expect(def.parameters).toBe(parameters);
+			expect(def.promptGuidelines).toBe(promptGuidelines);
+		});
+
+		it("skips case-insensitive duplicate flat tool names deterministically", () => {
+			const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+			try {
+				const pi = createMockPi();
+				pi.getAllTools.mockReturnValue([
+					mockTool("MyTool", { path: "/x/node_modules/pi-ext-a/index.js" }),
+					mockTool("mytool", { path: "/y/node_modules/pi-ext-b/index.js" }),
+				]);
+
+				registerAliasesIsolated(pi, tempDir);
+
+				expect(pi.registerTool).toHaveBeenCalledTimes(1);
+				expect(warn).toHaveBeenCalledWith(expect.stringContaining("case-insensitive duplicate"));
+			} finally {
+				warn.mockRestore();
+			}
+		});
+
 		it("registers alias stubs whose execute throws instead of shadow-executing", async () => {
 			const pi = createMockPi();
 			pi.getAllTools.mockReturnValue([
@@ -962,8 +1044,17 @@ describe("pi-claude-code-use", () => {
 	async function getProviderRequestHandler(pi: ReturnType<typeof createMockPi>) {
 		await piClaudeCodeUse(pi as unknown as ExtensionAPI);
 		const hookCall = pi.on.mock.calls.find((c: unknown[]) => c[0] === "before_provider_request");
-		return hookCall?.[1] as (event: { payload: unknown }, ctx: Record<string, unknown>) => unknown;
+		const handler = hookCall?.[1] as (event: { payload: unknown }, ctx: Record<string, unknown>) => unknown;
+		// The handler refreshes aliases from config; isolate from any real user config.
+		const isolatedDir = mkdtempSync(join(tmpdir(), "pi-claude-code-use-"));
+		vi.stubEnv("PI_CODING_AGENT_DIR", join(isolatedDir, "agent"));
+		return (event: { payload: unknown }, ctx: Record<string, unknown>) =>
+			handler(event, { cwd: join(isolatedDir, "project"), ...ctx });
 	}
+
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
 
 	it("transforms payload when model is anthropic OAuth", async () => {
 		const pi = createMockPi();
@@ -974,7 +1065,7 @@ describe("pi-claude-code-use", () => {
 			modelRegistry: { isUsingOAuth: () => true },
 		};
 
-		const result = handler(
+		const result = await handler(
 			{
 				payload: {
 					system: "ask about pi itself",
@@ -992,6 +1083,42 @@ describe("pi-claude-code-use", () => {
 		const p = result as Record<string, unknown>;
 		expect(p.system).toBe("ask about the cli itself");
 		expect((p.tools as { name: string }[]).map((t) => t.name)).toEqual(["Read"]);
+	});
+
+	it("aliases late-registered flat tools in-payload on the first turn", async () => {
+		const pi = createMockPi();
+		const handler = await getProviderRequestHandler(pi);
+
+		// Simulate a companion extension whose before_agent_start ran AFTER ours
+		// and registered web_search: it is active (in the payload) but no alias
+		// pass has seen it yet.
+		pi.getAllTools.mockReturnValue([
+			mockTool("read"),
+			mockTool("web_search", { path: "/x/node_modules/pi-web-providers/dist/index.js" }),
+		]);
+
+		const ctx = {
+			model: { provider: "anthropic", id: "claude-opus-4-6" },
+			modelRegistry: { isUsingOAuth: () => true },
+		};
+
+		const result = (await handler(
+			{
+				payload: {
+					tools: [
+						{ name: "Read", description: "Read", input_schema: {} },
+						{ name: "web_search", description: "Managed web search", input_schema: {} },
+					],
+					messages: [],
+				},
+			},
+			ctx,
+		)) as Record<string, unknown>;
+
+		// The alias gets registered during the request hook...
+		expect(pi.registerTool).toHaveBeenCalledWith(expect.objectContaining({ name: "mcp__web_providers__web_search" }));
+		// ...and the flat tool is renamed in-payload even though the alias was not advertised.
+		expect((result.tools as { name: string }[]).map((t) => t.name)).toEqual(["Read", "mcp__web_providers__web_search"]);
 	});
 
 	it("returns undefined for non-anthropic models", async () => {
@@ -1118,21 +1245,128 @@ describe("pi-claude-code-use", () => {
 			expect(_test.FLAT_TO_MCP.get("web_search_exa")).toBe("mcp__exa__web_search");
 		});
 
-		it("ignores user aliases that are not mcp__-prefixed", () => {
+		it("ignores user aliases that are not mcp__-prefixed and keeps the derived alias", () => {
 			const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 			try {
 				writeFileSync(projectConfigPath, JSON.stringify({ toolAliases: [["subagent", "not_an_mcp_name"]] }));
 
 				const pi = createMockPi();
-				pi.getAllTools.mockReturnValue([mockTool("subagent")]);
+				pi.getAllTools.mockReturnValue([mockTool("subagent", { path: "/x/node_modules/pi-sub/index.js" })]);
 
 				_test.registerMcpAliases(pi as unknown as ExtensionAPI, { cwd: projectDir, agentDir });
 
 				expect(pi.registerTool).not.toHaveBeenCalledWith(expect.objectContaining({ name: "not_an_mcp_name" }));
 				expect(warn).toHaveBeenCalledWith(expect.stringContaining('alias must start with "mcp__"'));
+				// The invalid entry must not poison the alias maps: the derived alias wins.
+				expect(_test.FLAT_TO_MCP.get("subagent")).toBe("mcp__sub__subagent");
+				expect(_test.MCP_TO_FLAT.has("not_an_mcp_name")).toBe(false);
 			} finally {
 				warn.mockRestore();
 			}
+		});
+
+		it("rejects user aliases that collide with another extension's MCP tool", () => {
+			const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+			try {
+				writeFileSync(projectConfigPath, JSON.stringify({ toolAliases: [["subagent", "mcp__real__tool"]] }));
+
+				const pi = createMockPi();
+				pi.getAllTools.mockReturnValue([
+					mockTool("subagent", { path: "/x/node_modules/pi-sub/index.js" }),
+					mockTool("mcp__real__tool"),
+				]);
+
+				_test.registerMcpAliases(pi as unknown as ExtensionAPI, { cwd: projectDir, agentDir });
+
+				expect(warn).toHaveBeenCalledWith(expect.stringContaining("already taken by another extension's tool"));
+				// The foreign tool must not be routed to; derivation applies instead.
+				expect(_test.FLAT_TO_MCP.get("subagent")).toBe("mcp__sub__subagent");
+				expect(_test.MCP_TO_FLAT.has("mcp__real__tool")).toBe(false);
+			} finally {
+				warn.mockRestore();
+			}
+		});
+
+		it("rejects duplicate override targets (first wins)", () => {
+			const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+			try {
+				writeFileSync(
+					projectConfigPath,
+					JSON.stringify({
+						toolAliases: [
+							["tool_a", "mcp__shared__name"],
+							["tool_b", "mcp__shared__name"],
+						],
+					}),
+				);
+
+				const pi = createMockPi();
+				pi.getAllTools.mockReturnValue([
+					mockTool("tool_a", { path: "/x/node_modules/pi-a/index.js" }),
+					mockTool("tool_b", { path: "/x/node_modules/pi-b/index.js" }),
+				]);
+
+				_test.registerMcpAliases(pi as unknown as ExtensionAPI, { cwd: projectDir, agentDir });
+
+				expect(warn).toHaveBeenCalledWith(expect.stringContaining("already used by another toolAliases entry"));
+				expect(_test.FLAT_TO_MCP.get("tool_a")).toBe("mcp__shared__name");
+				expect(_test.MCP_TO_FLAT.get("mcp__shared__name")).toBe("tool_a");
+				// tool_b falls back to derivation.
+				expect(_test.FLAT_TO_MCP.get("tool_b")).toBe("mcp__b__tool_b");
+			} finally {
+				warn.mockRestore();
+			}
+		});
+
+		it("rejects overrides with surrounding whitespace or over-length names", () => {
+			const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+			try {
+				writeFileSync(
+					projectConfigPath,
+					JSON.stringify({
+						toolAliases: [
+							["tool_a", " mcp__padded__name"],
+							["tool_b", `mcp__long__${"x".repeat(130)}`],
+						],
+					}),
+				);
+
+				const pi = createMockPi();
+				pi.getAllTools.mockReturnValue([]);
+
+				_test.registerMcpAliases(pi as unknown as ExtensionAPI, { cwd: projectDir, agentDir });
+
+				expect(warn).toHaveBeenCalledWith(expect.stringContaining("surrounding whitespace"));
+				expect(warn).toHaveBeenCalledWith(expect.stringContaining("exceeds 128 characters"));
+				expect(_test.FLAT_TO_MCP.size).toBe(0);
+			} finally {
+				warn.mockRestore();
+			}
+		});
+
+		it("reverts to the derived alias when an override is removed (auto-aliasing enabled)", () => {
+			const pi = createMockPi();
+			pi.getAllTools.mockReturnValue([
+				mockTool("web_search_exa", { path: "/x/node_modules/@benvargas/pi-exa-mcp/extensions/index.ts" }),
+			]);
+
+			writeFileSync(projectConfigPath, JSON.stringify({ toolAliases: [["web_search_exa", "mcp__exa__web_search"]] }));
+			_test.registerMcpAliases(pi as unknown as ExtensionAPI, { cwd: projectDir, agentDir });
+			expect(_test.FLAT_TO_MCP.get("web_search_exa")).toBe("mcp__exa__web_search");
+
+			// Remove the override: automatic derivation must take over again.
+			writeFileSync(projectConfigPath, JSON.stringify({ toolAliases: [] }));
+			_test.registerMcpAliases(pi as unknown as ExtensionAPI, { cwd: projectDir, agentDir });
+			expect(_test.FLAT_TO_MCP.get("web_search_exa")).toBe("mcp__exa_mcp__web_search_exa");
+
+			// The stale override alias keeps a reverse route for unaliasing.
+			const msg = {
+				role: "assistant",
+				content: [{ type: "toolCall", id: "s", name: "mcp__exa__web_search", arguments: {} }],
+			};
+			const out = _test.unaliasToolCalls(msg) as typeof msg | undefined;
+			expect(out).toBeDefined();
+			expect((out?.content[0] as { name: string }).name).toBe("web_search_exa");
 		});
 
 		it("keeps user alias mappings for flat tools that are not in the registry", () => {

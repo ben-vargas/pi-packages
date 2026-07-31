@@ -72,7 +72,9 @@ Anthropic's OAuth subscription endpoint refuses flat-named custom tools but acce
    - directory-based extensions → the nearest non-generic directory name (skipping `extensions`, `src`, `dist`, `lib`, `build`, `out`)
    A leading `pi-` prefix is stripped and the segment is sanitized to `[a-z0-9_]`.
 3. The alias is `mcp__<server>__<tool>` (sanitized, capped at Anthropic's 128-char limit). Name collisions are resolved deterministically with numeric suffixes (`_2`, `_3`, ...) in sorted flat-name order; derived names never shadow an existing tool.
-4. A schema-only alias tool is registered carrying the source tool's parameter schema, description, and prompt guidelines. Its `execute` is a stub: when the assistant calls a managed alias, `pi-claude-code-use` rewrites the finalized `toolCall` back to the original flat name during `message_end`, before Pi resolves execution, so the source extension's original `execute` closure and state always run.
+4. A schema-only alias tool is registered carrying the source tool's parameter schema, description, and prompt guidelines. Its `execute` is a stub: when the assistant calls a managed alias, `pi-claude-code-use` rewrites the finalized `toolCall` back to the original flat name during `message_end`, before Pi resolves execution, so the source extension's original `execute` closure and state always run. Aliases are re-registered if the source tool's schema changes mid-session, and every alias keeps a permanent reverse route so stale aliases (after config changes) still resolve to their source tool.
+
+Alias passes run at `session_start`, `before_agent_start`, and `before_provider_request` (OAuth requests only). The last pass catches tools that another extension registers from its own `before_agent_start` handler after this extension's handler already ran, so those tools are aliased in-payload on their first turn instead of the second.
 
 Examples with the companion extensions from this monorepo installed via npm:
 
@@ -99,7 +101,7 @@ Derived names are deterministic but mechanical. To choose specific alias names (
 }
 ```
 
-Each entry maps an existing flat Pi tool name to the MCP-style name Anthropic should see. Use the flat tool name exactly as the source extension registers it; the alias must be in the form `mcp__<namespace>__<tool>` (entries without the `mcp__` prefix are ignored with a warning).
+Each entry maps an existing flat Pi tool name to the MCP-style name Anthropic should see. Use the flat tool name exactly as the source extension registers it; the alias must be in the form `mcp__<namespace>__<tool>`. Entries are validated and invalid ones are fully ignored with a warning (derivation applies instead): the alias must be `mcp__`-prefixed, trimmed, at most 128 characters, not already used by another entry, not the name of another extension's tool, and not an alias this extension already registered for a different flat tool.
 
 User-configured aliases override automatic derivation for that flat tool. They are otherwise treated the same as derived aliases: Anthropic sees the MCP-style name, but managed alias calls are canonicalized back to the flat source tool before local execution. MCP-style tools that are provided directly by another extension are not rewritten unless `pi-claude-code-use` registered that same alias.
 
@@ -130,6 +132,16 @@ Examples:
 - `mcp__mytools__lookup_customer`
 
 That said, flat-named tools no longer require any special handling: `pi-claude-code-use` automatically derives and registers an MCP-style alias for every non-core flat tool it finds in Pi's registry, including tools registered from lifecycle hooks. Registering directly under an MCP-style name simply avoids the aliasing layer entirely.
+
+## Known Limitations
+
+Pi's `getAllTools()` exposes each tool's name, description, parameter schema, prompt guidelines, and source metadata — but not the full `ToolDefinition`. As a result, alias tools do not carry:
+
+- `promptSnippet` -- the source tool's one-line entry in Pi's "Available tools" system prompt section keeps the flat name.
+- `constrainedSampling` -- provider-side strict-schema sampling configured on the source tool does not apply to the alias.
+- `renderCall` / `renderResult` / `renderShell` -- while a call is streaming, an aliased tool renders with Pi's generic renderer; execution itself is still routed to (and rendered by) the flat tool.
+
+These are display/metadata-level gaps; execution correctness is unaffected. They would be resolved upstream if Pi expanded `ToolInfo` or exposed `getToolDefinition()` on the extension API.
 
 ## Notes
 

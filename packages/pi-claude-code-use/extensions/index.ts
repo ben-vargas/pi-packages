@@ -164,9 +164,12 @@ function unaliasToolCalls(message: unknown): unknown {
 		return undefined;
 	}
 	const content = remapBlockNames(message.content, "toolCall", (n) => {
-		const flat = MCP_TO_FLAT.get(lower(n));
-		if (!flat || !registeredMcpAliases.has(lower(n))) return undefined;
-		return flat;
+		const nameLc = lower(n);
+		if (!registeredMcpAliases.has(nameLc)) return undefined;
+		// Prefer the current mapping; fall back to the permanent route recorded at
+		// registration time so stale aliases (e.g. after a config change removed
+		// their mapping) still resolve to their original flat tool.
+		return MCP_TO_FLAT.get(nameLc) ?? registeredAliasRoutes.get(nameLc);
 	});
 	return content === message.content ? undefined : { ...message, content };
 }
@@ -263,12 +266,16 @@ function filterAndRemapTools(tools: unknown[] | undefined, disableFilter: boolea
 			continue;
 		}
 
-		// Rules 4 & 5: flat tool with a known MCP alias
+		// Rules 4 & 5: flat tool with a known MCP alias. The alias qualifies when
+		// it is advertised in this payload OR when this extension registered it
+		// (covers aliases registered mid-turn, before activation catches up —
+		// message_end unaliasing routes the call to the flat tool either way).
 		const mcpAlias = FLAT_TO_MCP.get(nameLc);
 		if (mcpAlias) {
 			const aliasLc = lower(mcpAlias);
-			if (advertised.has(aliasLc) && !emitted.has(aliasLc)) {
-				// Alias exists in tool list -> preserve its metadata, including cache_control.
+			if ((advertised.has(aliasLc) || registeredMcpAliases.has(aliasLc)) && !emitted.has(aliasLc)) {
+				// Prefer the advertised alias entry to preserve its metadata,
+				// including cache_control; otherwise rename the flat entry.
 				emitted.add(aliasLc);
 				result.push(toolsByName.get(aliasLc) ?? { ...tool, name: mcpAlias });
 			} else if (disableFilter && !emitted.has(nameLc)) {
@@ -498,8 +505,19 @@ const registeredMcpAliases = new Set<string>();
 const autoActivatedAliases = new Set<string>();
 let lastManagedToolList: string[] | undefined;
 
-/** flat tool name (lowercase) → assigned MCP alias. Keeps assignments stable within a session. */
+/** flat tool name (lowercase) → auto-derived MCP alias. Keeps derived assignments stable within a session. User overrides are intentionally NOT stored here so removing an override reverts to derivation. */
 const aliasAssignments = new Map<string, string>();
+
+/** Permanent record: alias name (lowercase) → flat source tool name, for every alias this extension registered. Never cleared, so stale aliases keep resolving after config changes. */
+const registeredAliasRoutes = new Map<string, string>();
+
+/** alias name (lowercase) → source metadata snapshot used at registration, to detect source schema updates. */
+interface AliasSourceMeta {
+	description: string;
+	parameters: unknown;
+	promptGuidelines: unknown;
+}
+const aliasSourceMeta = new Map<string, AliasSourceMeta>();
 
 function registerMcpAliases(pi: ExtensionAPI, opts: { cwd?: string; agentDir?: string } = {}): void {
 	// Pick up user-defined tool aliases so subsequent payload transforms
@@ -514,26 +532,77 @@ function registerMcpAliases(pi: ExtensionAPI, opts: { cwd?: string; agentDir?: s
 	}
 
 	// Names unavailable for newly derived aliases: every currently registered
-	// tool plus every user-configured alias target.
+	// tool plus every valid user-configured alias target.
 	const taken = new Set(toolIndex.keys());
 
+	// Validate user overrides. Invalid entries are fully ignored: they are
+	// excluded from registration AND from the alias maps, so derivation and
+	// payload remapping fall back to the derived alias.
+	const warnIgnored = (flat: string, mcp: string, reason: string): void => {
+		console.warn(`[pi-claude-code-use] Ignoring toolAliases entry ["${flat}", "${mcp}"]: ${reason}`);
+	};
+	const validUserAliases: ToolAliasPair[] = [];
 	const userOverrides = new Map<string, string>();
+	const overrideTargets = new Set<string>();
 	for (const [flat, mcp] of userToolAliases) {
-		if (!lower(mcp).startsWith("mcp__")) {
-			console.warn(
-				`[pi-claude-code-use] Ignoring toolAliases entry ["${flat}", "${mcp}"]: alias must start with "mcp__"`,
-			);
+		const mcpLc = lower(mcp);
+		if (mcp !== mcp.trim()) {
+			warnIgnored(flat, mcp, "alias has surrounding whitespace");
 			continue;
 		}
+		if (!mcpLc.startsWith("mcp__")) {
+			warnIgnored(flat, mcp, 'alias must start with "mcp__"');
+			continue;
+		}
+		if (mcp.length > MAX_TOOL_NAME_LENGTH) {
+			warnIgnored(flat, mcp, `alias exceeds ${MAX_TOOL_NAME_LENGTH} characters`);
+			continue;
+		}
+		if (overrideTargets.has(mcpLc)) {
+			warnIgnored(flat, mcp, "alias is already used by another toolAliases entry");
+			continue;
+		}
+		// The target may already exist as a tool only when this extension
+		// registered it for the same flat tool. A foreign tool with that name, or
+		// an alias we registered for a DIFFERENT flat tool, must not be re-routed.
+		const ownedFor = registeredAliasRoutes.get(mcpLc);
+		if (toolIndex.has(mcpLc) && !registeredMcpAliases.has(mcpLc)) {
+			warnIgnored(flat, mcp, "alias name is already taken by another extension's tool");
+			continue;
+		}
+		if (ownedFor !== undefined && lower(ownedFor) !== lower(flat)) {
+			warnIgnored(flat, mcp, `alias is already registered for "${ownedFor}"`);
+			continue;
+		}
+		validUserAliases.push([flat, mcp]);
 		userOverrides.set(lower(flat), mcp);
-		taken.add(lower(mcp));
+		overrideTargets.add(mcpLc);
+		taken.add(mcpLc);
 	}
 
 	const registerAliasTool = (tool: ToolInfo, mcpName: string): void => {
 		const mcpLc = lower(mcpName);
-		if (registeredMcpAliases.has(mcpLc)) return;
-		// Never shadow an existing tool (e.g. a real MCP tool from another extension).
-		if (toolIndex.has(mcpLc)) return;
+		const meta: AliasSourceMeta = {
+			description: tool.description,
+			parameters: tool.parameters,
+			promptGuidelines: tool.promptGuidelines,
+		};
+		if (registeredMcpAliases.has(mcpLc)) {
+			// Re-register when the source tool's metadata changed (e.g. the source
+			// extension re-registered it with a new schema from a lifecycle hook).
+			const previous = aliasSourceMeta.get(mcpLc);
+			if (
+				previous &&
+				previous.description === meta.description &&
+				previous.parameters === meta.parameters &&
+				previous.promptGuidelines === meta.promptGuidelines
+			) {
+				return;
+			}
+		} else if (toolIndex.has(mcpLc)) {
+			// Never shadow an existing tool (e.g. a real MCP tool from another extension).
+			return;
+		}
 		pi.registerTool({
 			name: mcpName,
 			label: `MCP ${tool.name}`,
@@ -550,6 +619,13 @@ function registerMcpAliases(pi: ExtensionAPI, opts: { cwd?: string; agentDir?: s
 			},
 		} as ToolRegistration);
 		registeredMcpAliases.add(mcpLc);
+		registeredAliasRoutes.set(mcpLc, tool.name);
+		aliasSourceMeta.set(mcpLc, meta);
+		// Pi auto-activates newly registered tools. Track the alias as
+		// auto-managed so syncAliasActivation can deactivate it when OAuth is off
+		// or the flat source tool is inactive, instead of mistaking Pi's implicit
+		// activation for a user selection.
+		autoActivatedAliases.add(mcpName);
 	};
 
 	// Aliasable tools, in deterministic order so collision suffixes are stable.
@@ -561,18 +637,25 @@ function registerMcpAliases(pi: ExtensionAPI, opts: { cwd?: string; agentDir?: s
 		.sort((a, b) => (lower(a.name) < lower(b.name) ? -1 : 1));
 
 	const derivedPairs: ToolAliasPair[] = [];
+	const seenFlat = new Set<string>();
 	for (const tool of aliasable) {
 		const flatLc = lower(tool.name);
+		if (seenFlat.has(flatLc)) {
+			// Two registry tools differing only in case would share one alias slot;
+			// alias the first (sorted) one deterministically and skip the rest.
+			console.warn(`[pi-claude-code-use] Skipping alias for "${tool.name}": case-insensitive duplicate tool name`);
+			continue;
+		}
+		seenFlat.add(flatLc);
 
 		const override = userOverrides.get(flatLc);
 		if (override) {
-			aliasAssignments.set(flatLc, override);
 			registerAliasTool(tool, override);
-			continue; // Mapping comes from userToolAliases in refreshAliasMap.
+			continue; // Mapping comes from validUserAliases in refreshAliasMap.
 		}
 		if (disableAutoAlias) continue;
 
-		// Reuse the previous assignment when we registered it; otherwise derive.
+		// Reuse the previous derived assignment when we registered it; otherwise derive.
 		let mcpName = aliasAssignments.get(flatLc);
 		if (!mcpName || (!registeredMcpAliases.has(lower(mcpName)) && taken.has(lower(mcpName)))) {
 			mcpName = reserveAliasName(deriveAliasBase(tool), taken);
@@ -583,7 +666,7 @@ function registerMcpAliases(pi: ExtensionAPI, opts: { cwd?: string; agentDir?: s
 		registerAliasTool(tool, mcpName);
 	}
 
-	refreshAliasMap(userToolAliases, derivedPairs);
+	refreshAliasMap(validUserAliases, derivedPairs);
 }
 
 /**
@@ -696,6 +779,16 @@ export default async function piClaudeCodeUse(pi: ExtensionAPI): Promise<void> {
 			return undefined;
 		}
 
+		// Catch tools registered by other extensions' before_agent_start handlers
+		// that ran AFTER ours (extension order), so their aliases exist on the
+		// first turn instead of the second. filterAndRemapTools renames flat tools
+		// to registered aliases even before activation catches up.
+		try {
+			registerMcpAliases(pi, { cwd: typeof ctx.cwd === "string" ? ctx.cwd : undefined });
+		} catch {
+			// Alias refresh must never break the actual request.
+		}
+
 		writeDebugLog({ stage: "before", payload: event.payload });
 		const disableFilter = process.env.PI_CLAUDE_CODE_USE_DISABLE_TOOL_FILTER === "1";
 		const transformed = transformPayload(event.payload as Record<string, unknown>, disableFilter);
@@ -713,7 +806,9 @@ export const _test = {
 	MCP_TO_FLAT,
 	FLAT_TO_MCP,
 	aliasAssignments,
+	aliasSourceMeta,
 	autoActivatedAliases,
+	registeredAliasRoutes,
 	collectToolNames,
 	deriveAliasBase,
 	deriveServerSegment,

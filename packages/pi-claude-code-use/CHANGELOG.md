@@ -14,10 +14,17 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Alias tools are now schema-only stubs built from `getAllTools()` metadata (parameters, description, prompt guidelines). Managed alias calls were already rewritten back to their flat source names at `message_end` before execution, so the captured duplicate `execute` was never used; the stub throws if that rewrite is ever bypassed.
 - Derived alias names resolve collisions deterministically with numeric suffixes and respect Anthropic's 128-char tool name limit. Derived names never shadow existing tools (including real MCP tools from other extensions).
 - User-configured `toolAliases` entries now act as overrides on top of automatic derivation and must be `mcp__`-prefixed (invalid entries are ignored with a warning).
-- Removed the `@mariozechner/jiti` dependency and the `pi-ai`/`pi-agent-core`/`pi-tui`/`typebox` peer dependencies; only `@earendil-works/pi-coding-agent` remains.
+- Removed the `@mariozechner/jiti` dependency and the `pi-ai`/`pi-agent-core`/`pi-tui`/`typebox` peer dependencies; only `@earendil-works/pi-coding-agent` remains, with the floor raised to `>=0.77.0` (first release exposing `promptGuidelines` in `ToolInfo`).
 
 ### Added
 - `PI_CLAUDE_CODE_USE_DISABLE_AUTO_ALIAS=1` environment variable to disable automatic alias derivation while keeping user-configured aliases.
+- An additional alias pass during `before_provider_request` so tools registered by other extensions' `before_agent_start` handlers (running after this extension's) are aliased in-payload on their first turn.
+- Aliases are re-registered when the source tool's schema/description changes mid-session, and permanent reverse routes keep stale aliases resolving to their source tool after config changes.
+- Freshly registered aliases are tracked as auto-activated (Pi implicitly activates newly registered tools), so they are correctly deactivated for non-OAuth models and when their flat source tool is inactive.
+- `toolAliases` validation: entries with whitespace, over-length names, duplicate targets, collisions with other extensions' tools, or targets owned by a different flat tool are fully ignored with a warning (derivation applies instead).
+
+### Known limitations
+- `getAllTools()` does not expose `promptSnippet`, `constrainedSampling`, or custom renderers, so aliases do not carry them (execution routing is unaffected; the flat tool's renderers apply once execution starts). Would be resolved upstream by expanding Pi's `ToolInfo`.
 
 ### Migration notes
 - Previously curated alias names (`mcp__exa__web_search`, `mcp__firecrawl__scrape`, ...) change to derived names (`mcp__exa_mcp__web_search_exa`, `mcp__firecrawl__firecrawl_scrape`, ...). Session files persist flat tool names, so resumed sessions are unaffected. To keep the old names, add them as `toolAliases` overrides in `pi-claude-code-use.json`.
