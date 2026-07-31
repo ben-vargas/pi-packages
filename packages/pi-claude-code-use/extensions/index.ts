@@ -244,6 +244,26 @@ function filterAndRemapTools(tools: unknown[] | undefined, disableFilter: boolea
 	const emitted = new Set<string>();
 	const result: unknown[] = [];
 
+	// Aliases (lowercase) that a flat entry in this payload will be renamed to.
+	// A standalone advertised alias stub is suppressed in favor of the renamed
+	// flat entry regardless of payload order, because the flat entry always
+	// carries the source tool's current schema.
+	const replacedByFlat = new Set<string>();
+	if (!disableFilter) {
+		for (const tool of tools) {
+			if (!isPlainObject(tool) || typeof tool.name !== "string") continue;
+			if (typeof tool.type === "string" && tool.type.trim().length > 0) continue;
+			const nameLc = lower(tool.name);
+			if (CORE_TOOL_NAMES.has(nameLc) || nameLc.startsWith("mcp__")) continue;
+			const mcpAlias = FLAT_TO_MCP.get(nameLc);
+			if (!mcpAlias) continue;
+			const aliasLc = lower(mcpAlias);
+			if (advertised.has(aliasLc) || registeredMcpAliases.has(aliasLc)) {
+				replacedByFlat.add(aliasLc);
+			}
+		}
+	}
+
 	for (const tool of tools) {
 		if (!isPlainObject(tool)) continue;
 
@@ -257,9 +277,11 @@ function filterAndRemapTools(tools: unknown[] | undefined, disableFilter: boolea
 		if (!name) continue;
 		const nameLc = lower(name);
 
-		// Rules 2 & 3: core tools and mcp__-prefixed pass through (with dedup)
+		// Rules 2 & 3: core tools and mcp__-prefixed pass through (with dedup).
+		// Alias stubs that a flat entry will replace are skipped here; the
+		// renamed flat entry is emitted at the flat entry's position instead.
 		if (CORE_TOOL_NAMES.has(nameLc) || nameLc.startsWith("mcp__")) {
-			if (!emitted.has(nameLc)) {
+			if (!emitted.has(nameLc) && !replacedByFlat.has(nameLc)) {
 				emitted.add(nameLc);
 				result.push(tool);
 			}
@@ -526,6 +548,30 @@ interface AliasSourceMeta {
 }
 const aliasSourceMeta = new Map<string, AliasSourceMeta>();
 
+/** alias name (lowercase) → the EXACT alias name last registered with pi. Pi keys registrations by exact name, so a case-only change introduces (and auto-activates) a new tool name. */
+const aliasExactNames = new Map<string, string>();
+
+/**
+ * Promote auto-activated aliases to user-selected when the user deliberately
+ * kept the alias while removing its flat counterpart from the tool picker.
+ * Detected via the last managed baseline: the flat tool was previously
+ * managed, is no longer active, and the alias is still active. Comparisons
+ * are case-insensitive (FLAT_TO_MCP keys are lowercased; pi names are exact).
+ */
+function promoteKeptAliases(activeNames: string[], desiredSet: ReadonlySet<string>): void {
+	if (lastManagedToolList === undefined) return;
+	const activeSet = new Set(activeNames);
+	const activeLc = new Set(activeNames.map(lower));
+	const lastManagedLc = new Set(lastManagedToolList.map(lower));
+	for (const alias of [...autoActivatedAliases]) {
+		if (!activeSet.has(alias) || desiredSet.has(alias)) continue;
+		const flatLc = [...FLAT_TO_MCP.entries()].find(([, mcp]) => mcp === alias)?.[0];
+		if (flatLc && lastManagedLc.has(flatLc) && !activeLc.has(flatLc)) {
+			autoActivatedAliases.delete(alias);
+		}
+	}
+}
+
 function registerMcpAliases(pi: ExtensionAPI, opts: { cwd?: string; agentDir?: string } = {}): void {
 	// Pick up user-defined tool aliases so subsequent payload transforms
 	// (filterAndRemapTools, remapToolChoice, message rewriting) see them.
@@ -542,6 +588,25 @@ function registerMcpAliases(pi: ExtensionAPI, opts: { cwd?: string; agentDir?: s
 	// tool plus every valid user-configured alias target.
 	const taken = new Set(toolIndex.keys());
 
+	// Aliasable tools, in deterministic order so collision suffixes are stable.
+	const aliasable = allTools
+		.filter((tool) => {
+			const nameLc = lower(tool.name);
+			return nameLc.length > 0 && !CORE_TOOL_NAMES.has(nameLc) && !nameLc.startsWith("mcp__");
+		})
+		.sort((a, b) => (lower(a.name) < lower(b.name) ? -1 : 1));
+
+	// Case-insensitive duplicate flat names are excluded from aliasing (and
+	// from user overrides): all alias state is keyed by lowercased names while
+	// pi's execution lookup is exact-name, so aliasing either variant could
+	// route a call for one tool to the other.
+	const flatNameCounts = new Map<string, number>();
+	for (const tool of aliasable) {
+		const flatLc = lower(tool.name);
+		flatNameCounts.set(flatLc, (flatNameCounts.get(flatLc) ?? 0) + 1);
+	}
+	const isDuplicateFlat = (flatLc: string): boolean => (flatNameCounts.get(flatLc) ?? 0) > 1;
+
 	// Validate user overrides. Invalid entries are fully ignored: they are
 	// excluded from registration AND from the alias maps, so derivation and
 	// payload remapping fall back to the derived alias.
@@ -553,6 +618,10 @@ function registerMcpAliases(pi: ExtensionAPI, opts: { cwd?: string; agentDir?: s
 	const overrideTargets = new Set<string>();
 	for (const [flat, mcp] of userToolAliases) {
 		const mcpLc = lower(mcp);
+		if (isDuplicateFlat(lower(flat))) {
+			warnIgnored(flat, mcp, "flat tool name has a case-insensitive duplicate in the registry");
+			continue;
+		}
 		if (mcp !== mcp.trim()) {
 			warnIgnored(flat, mcp, "alias has surrounding whitespace");
 			continue;
@@ -596,13 +665,15 @@ function registerMcpAliases(pi: ExtensionAPI, opts: { cwd?: string; agentDir?: s
 		};
 		if (registeredMcpAliases.has(mcpLc)) {
 			// Re-register when the source tool's metadata changed (e.g. the source
-			// extension re-registered it with a new schema from a lifecycle hook).
+			// extension re-registered it with a new schema from a lifecycle hook)
+			// or when the exact alias casing changed (pi keys tools by exact name).
 			const previous = aliasSourceMeta.get(mcpLc);
 			if (
 				previous &&
 				previous.description === meta.description &&
 				previous.parameters === meta.parameters &&
-				previous.promptGuidelines === meta.promptGuidelines
+				previous.promptGuidelines === meta.promptGuidelines &&
+				aliasExactNames.get(mcpLc) === mcpName
 			) {
 				return;
 			}
@@ -610,7 +681,10 @@ function registerMcpAliases(pi: ExtensionAPI, opts: { cwd?: string; agentDir?: s
 			// Never shadow an existing tool (e.g. a real MCP tool from another extension).
 			return;
 		}
-		const isNewRegistration = !registeredMcpAliases.has(mcpLc);
+		// Pi keys tool registrations by EXACT name and auto-activates newly
+		// introduced exact names, so a case-only alias change also counts as a
+		// new registration for provenance tracking.
+		const isNewExactName = aliasExactNames.get(mcpLc) !== mcpName;
 		pi.registerTool({
 			name: mcpName,
 			label: `MCP ${tool.name}`,
@@ -629,38 +703,21 @@ function registerMcpAliases(pi: ExtensionAPI, opts: { cwd?: string; agentDir?: s
 		registeredMcpAliases.add(mcpLc);
 		registeredAliasRoutes.set(mcpLc, tool.name);
 		aliasSourceMeta.set(mcpLc, meta);
+		aliasExactNames.set(mcpLc, mcpName);
 		// Pi auto-activates newly registered tool NAMES (not same-name
-		// re-registrations, which preserve activation). Track only first-time
-		// registrations as auto-managed so syncAliasActivation can deactivate
-		// them when OAuth is off or the flat source tool is inactive, without
-		// flipping the provenance of a user-selected alias whose source schema
-		// merely changed.
-		if (isNewRegistration) {
+		// re-registrations, which preserve activation). Track only new exact
+		// names as auto-managed so syncAliasActivation can deactivate them when
+		// OAuth is off or the flat source tool is inactive, without flipping the
+		// provenance of a user-selected alias whose source schema merely changed.
+		if (isNewExactName) {
 			autoActivatedAliases.add(mcpName);
 		}
 	};
 
-	// Aliasable tools, in deterministic order so collision suffixes are stable.
-	const aliasable = allTools
-		.filter((tool) => {
-			const nameLc = lower(tool.name);
-			return nameLc.length > 0 && !CORE_TOOL_NAMES.has(nameLc) && !nameLc.startsWith("mcp__");
-		})
-		.sort((a, b) => (lower(a.name) < lower(b.name) ? -1 : 1));
-
-	// Exclude case-insensitive duplicate flat names entirely: all alias state
-	// is keyed by lowercased names, so aliasing either variant could route a
-	// call for one tool to the other (pi's execution lookup is exact-name).
-	const flatNameCounts = new Map<string, number>();
-	for (const tool of aliasable) {
-		const flatLc = lower(tool.name);
-		flatNameCounts.set(flatLc, (flatNameCounts.get(flatLc) ?? 0) + 1);
-	}
-
 	const derivedPairs: ToolAliasPair[] = [];
 	for (const tool of aliasable) {
 		const flatLc = lower(tool.name);
-		if ((flatNameCounts.get(flatLc) ?? 0) > 1) {
+		if (isDuplicateFlat(flatLc)) {
 			console.warn(`[pi-claude-code-use] Not aliasing "${tool.name}": case-insensitive duplicate tool name`);
 			continue;
 		}
@@ -706,24 +763,7 @@ function syncAliasActivation(pi: ExtensionAPI, enableAliases: boolean): void {
 		}
 		const desiredSet = new Set(desiredAliases);
 
-		// Promote auto-activated aliases to user-selected when the user explicitly kept
-		// the alias while removing its flat counterpart from the tool picker.
-		// We detect this by checking: (a) user changed the tool list since our last sync,
-		// (b) the flat tool was previously managed but is no longer active, and
-		// (c) the alias is still active. This means the user deliberately kept the alias.
-		if (lastManagedToolList !== undefined) {
-			const activeSet = new Set(activeNames);
-			const lastManaged = new Set(lastManagedToolList);
-			for (const alias of autoActivatedAliases) {
-				if (!activeSet.has(alias) || desiredSet.has(alias)) continue;
-				// Find the flat name for this alias
-				const flatName = [...FLAT_TO_MCP.entries()].find(([, mcp]) => mcp === alias)?.[0];
-				if (flatName && lastManaged.has(flatName) && !activeSet.has(flatName)) {
-					// User removed the flat tool but kept the alias → promote to user-selected
-					autoActivatedAliases.delete(alias);
-				}
-			}
-		}
+		promoteKeptAliases(activeNames, desiredSet);
 
 		// Find registered aliases currently in the active list
 		const activeRegistered = activeNames.filter((n) => registeredMcpAliases.has(lower(n)) && allNames.has(n));
@@ -755,6 +795,11 @@ function syncAliasActivation(pi: ExtensionAPI, enableAliases: boolean): void {
 		// user's later picker changes.
 		lastManagedToolList = [...next];
 	} else {
+		// A user may have removed a flat tool while keeping its alias and then
+		// switched away from OAuth before another enabled sync ran; honor that
+		// choice here too before pruning.
+		promoteKeptAliases(activeNames, new Set());
+
 		// Remove only auto-activated aliases; user-selected ones are preserved
 		const next = activeNames.filter((n) => !autoActivatedAliases.has(n));
 		autoActivatedAliases.clear();
@@ -827,6 +872,7 @@ export const _test = {
 	MCP_TO_FLAT,
 	FLAT_TO_MCP,
 	aliasAssignments,
+	aliasExactNames,
 	aliasSourceMeta,
 	autoActivatedAliases,
 	registeredAliasRoutes,

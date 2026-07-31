@@ -80,6 +80,7 @@ describe("pi-claude-code-use", () => {
 		_test.aliasAssignments.clear();
 		_test.registeredAliasRoutes.clear();
 		_test.aliasSourceMeta.clear();
+		_test.aliasExactNames.clear();
 		_test.setLastManagedToolList(undefined);
 		_test.refreshAliasMap([]);
 	});
@@ -268,6 +269,35 @@ describe("pi-claude-code-use", () => {
 				input_schema: { v: 2 },
 				cache_control: { type: "ephemeral", ttl: "1h" },
 			}),
+		]);
+	});
+
+	it("prefers the renamed flat entry over a stale alias stub regardless of payload order", () => {
+		_test.refreshAliasMap([], [["web_search_exa", "mcp__exa_mcp__web_search_exa"]]);
+		const result = _test.transformPayload(
+			{
+				tools: [
+					// Alias stub FIRST in the payload, with a stale schema.
+					{
+						name: "mcp__exa_mcp__web_search_exa",
+						description: "Stale alias stub",
+						input_schema: { v: 1 },
+						cache_control: { type: "ephemeral", ttl: "1h" },
+					},
+					{ name: "web_search_exa", description: "Current", input_schema: { v: 2 } },
+				],
+				messages: [],
+			},
+			false,
+		);
+
+		expect(result.tools).toEqual([
+			{
+				name: "mcp__exa_mcp__web_search_exa",
+				description: "Current",
+				input_schema: { v: 2 },
+				cache_control: { type: "ephemeral", ttl: "1h" },
+			},
 		]);
 	});
 
@@ -772,6 +802,32 @@ describe("pi-claude-code-use", () => {
 			}
 		});
 
+		it("tracks a case-only alias rename as a new auto-activated exact name", () => {
+			const pi = createMockPi();
+			const path = "/x/node_modules/@benvargas/pi-exa-mcp/extensions/index.ts";
+			const projectDir = join(tempDir, "project");
+			const configPath = join(projectDir, ".pi", "extensions", "pi-claude-code-use.json");
+			mkdirSync(dirname(configPath), { recursive: true });
+
+			const tool = mockTool("web_search_exa", { path });
+			pi.getAllTools.mockReturnValue([tool]);
+
+			writeFileSync(configPath, JSON.stringify({ toolAliases: [["web_search_exa", "MCP__Exa__Search"]] }));
+			registerAliasesIsolated(pi, tempDir);
+			expect(_test.autoActivatedAliases.has("MCP__Exa__Search")).toBe(true);
+
+			// Simulate the user having promoted the old casing, then changing the
+			// config to a different casing. Pi keys tools by exact name, so the new
+			// casing is a brand-new (auto-activated) tool name.
+			_test.autoActivatedAliases.clear();
+			writeFileSync(configPath, JSON.stringify({ toolAliases: [["web_search_exa", "mcp__exa__search"]] }));
+			registerAliasesIsolated(pi, tempDir);
+
+			expect(pi.registerTool).toHaveBeenCalledTimes(2);
+			expect(pi.registerTool).toHaveBeenLastCalledWith(expect.objectContaining({ name: "mcp__exa__search" }));
+			expect(_test.autoActivatedAliases.has("mcp__exa__search")).toBe(true);
+		});
+
 		it("does not flip a user-selected alias back to auto-managed on schema re-registration", () => {
 			const pi = createMockPi();
 			const path = "/x/node_modules/@benvargas/pi-exa-mcp/extensions/index.ts";
@@ -951,6 +1007,38 @@ describe("pi-claude-code-use", () => {
 
 		_test.syncAliasActivation(pi as unknown as ExtensionAPI, true);
 		expect(pi.setActiveTools).toHaveBeenCalledWith(["read"]);
+	});
+
+	it("promotes kept aliases for mixed-case flat tools (case-insensitive baseline comparison)", () => {
+		const pi = createMockPi();
+		_test.refreshAliasMap([], [["MyTool", "mcp__x__mytool"]]);
+		_test.registeredMcpAliases.add("mcp__x__mytool");
+		_test.autoActivatedAliases.add("mcp__x__mytool");
+		_test.setLastManagedToolList(["read", "MyTool", "mcp__x__mytool"]);
+
+		pi.getAllTools.mockReturnValue([mockTool("MyTool"), mockTool("mcp__x__mytool")]);
+		// User removed the exact-cased flat tool but kept the alias.
+		pi.getActiveTools.mockReturnValue(["read", "mcp__x__mytool"]);
+
+		_test.syncAliasActivation(pi as unknown as ExtensionAPI, true);
+		expect(pi.setActiveTools).not.toHaveBeenCalled();
+		expect(_test.autoActivatedAliases.has("mcp__x__mytool")).toBe(false);
+	});
+
+	it("honors a kept alias when switching to non-OAuth before another enabled sync", () => {
+		const pi = createMockPi();
+		_test.refreshAliasMap([], [["web_search_exa", "mcp__exa_mcp__web_search_exa"]]);
+		_test.registeredMcpAliases.add("mcp__exa_mcp__web_search_exa");
+		_test.autoActivatedAliases.add("mcp__exa_mcp__web_search_exa");
+		_test.setLastManagedToolList(["read", "web_search_exa", "mcp__exa_mcp__web_search_exa"]);
+
+		pi.getAllTools.mockReturnValue([mockTool("web_search_exa"), mockTool("mcp__exa_mcp__web_search_exa")]);
+		// User removed the flat tool, kept the alias, then switched models: the
+		// next sync is the DISABLE branch, which must still honor the choice.
+		pi.getActiveTools.mockReturnValue(["read", "mcp__exa_mcp__web_search_exa"]);
+
+		_test.syncAliasActivation(pi as unknown as ExtensionAPI, false);
+		expect(pi.setActiveTools).not.toHaveBeenCalled();
 	});
 
 	it("records the managed baseline even when the first sync is a no-op, enabling later promotion", () => {
@@ -1332,6 +1420,28 @@ describe("pi-claude-code-use", () => {
 				// The foreign tool must not be routed to; derivation applies instead.
 				expect(_test.FLAT_TO_MCP.get("subagent")).toBe("mcp__sub__subagent");
 				expect(_test.MCP_TO_FLAT.has("mcp__real__tool")).toBe(false);
+			} finally {
+				warn.mockRestore();
+			}
+		});
+
+		it("rejects overrides whose flat tool has a case-insensitive duplicate", () => {
+			const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+			try {
+				writeFileSync(projectConfigPath, JSON.stringify({ toolAliases: [["mytool", "mcp__x__mytool"]] }));
+
+				const pi = createMockPi();
+				pi.getAllTools.mockReturnValue([
+					mockTool("MyTool", { path: "/x/node_modules/pi-ext-a/index.js" }),
+					mockTool("mytool", { path: "/y/node_modules/pi-ext-b/index.js" }),
+				]);
+
+				_test.registerMcpAliases(pi as unknown as ExtensionAPI, { cwd: projectDir, agentDir });
+
+				expect(warn).toHaveBeenCalledWith(expect.stringContaining("case-insensitive duplicate in the registry"));
+				expect(pi.registerTool).not.toHaveBeenCalled();
+				expect(_test.FLAT_TO_MCP.size).toBe(0);
+				expect(_test.MCP_TO_FLAT.size).toBe(0);
 			} finally {
 				warn.mockRestore();
 			}
