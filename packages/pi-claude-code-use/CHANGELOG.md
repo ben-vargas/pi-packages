@@ -22,6 +22,10 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Aliases are re-registered when the source tool's schema/description changes mid-session, and permanent reverse routes keep stale aliases resolving to their source tool after config changes.
 - Freshly registered aliases are tracked as auto-activated (Pi implicitly activates newly registered tools), so they are correctly deactivated for non-OAuth models and when their flat source tool is inactive.
 - `toolAliases` validation: entries with whitespace, over-length names, duplicate targets, collisions with other extensions' tools, or targets owned by a different flat tool are fully ignored with a warning (derivation applies instead).
+- Payload remapping now renames the flat tool entry (which always carries the source tool's current schema) instead of substituting the advertised alias stub, preserving the alias entry's `cache_control`. This keeps the advertised schema fresh even when a source tool re-registers with a new schema mid-turn.
+- Case-insensitive duplicate flat tool names are excluded from aliasing entirely (alias state is lowercase-keyed while Pi's execution lookup is exact-name, so aliasing either variant could misroute).
+- Alias activation sync records its managed baseline even on no-op syncs, so a user who later removes a flat tool but keeps its alias gets the alias correctly promoted to user-selected.
+- Same-name alias re-registrations (schema refresh) no longer flip a user-selected alias back to auto-managed.
 
 ### Known limitations
 - `getAllTools()` does not expose `promptSnippet`, `constrainedSampling`, or custom renderers, so aliases do not carry them (execution routing is unaffected; the flat tool's renderers apply once execution starts). Would be resolved upstream by expanding Pi's `ToolInfo`.

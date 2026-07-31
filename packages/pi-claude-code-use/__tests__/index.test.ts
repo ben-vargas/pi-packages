@@ -245,11 +245,11 @@ describe("pi-claude-code-use", () => {
 		const result = _test.transformPayload(
 			{
 				tools: [
-					{ name: "web_search_exa", description: "Flat", input_schema: {} },
+					{ name: "web_search_exa", description: "Current", input_schema: { v: 2 } },
 					{
 						name: "mcp__exa_mcp__web_search_exa",
-						description: "Alias",
-						input_schema: {},
+						description: "Stale alias stub",
+						input_schema: { v: 1 },
 						cache_control: { type: "ephemeral", ttl: "1h" },
 					},
 				],
@@ -259,9 +259,13 @@ describe("pi-claude-code-use", () => {
 		);
 
 		expect((result.tools as { name: string }[]).map((t) => t.name)).toEqual(["mcp__exa_mcp__web_search_exa"]);
+		// The flat entry always carries the source tool's CURRENT schema, so the
+		// renamed flat entry wins over a potentially stale alias stub — while the
+		// advertised alias entry's cache_control is preserved.
 		expect(result.tools).toEqual([
 			expect.objectContaining({
-				description: "Alias",
+				description: "Current",
+				input_schema: { v: 2 },
 				cache_control: { type: "ephemeral", ttl: "1h" },
 			}),
 		]);
@@ -746,7 +750,7 @@ describe("pi-claude-code-use", () => {
 			expect(def.promptGuidelines).toBe(promptGuidelines);
 		});
 
-		it("skips case-insensitive duplicate flat tool names deterministically", () => {
+		it("excludes case-insensitive duplicate flat tool names from aliasing entirely", () => {
 			const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 			try {
 				const pi = createMockPi();
@@ -757,11 +761,33 @@ describe("pi-claude-code-use", () => {
 
 				registerAliasesIsolated(pi, tempDir);
 
-				expect(pi.registerTool).toHaveBeenCalledTimes(1);
+				// Aliasing either variant could route a call for one tool to the other
+				// (all alias state is lowercase-keyed, pi execution lookup is exact),
+				// so neither gets an alias.
+				expect(pi.registerTool).not.toHaveBeenCalled();
+				expect(_test.FLAT_TO_MCP.size).toBe(0);
 				expect(warn).toHaveBeenCalledWith(expect.stringContaining("case-insensitive duplicate"));
 			} finally {
 				warn.mockRestore();
 			}
+		});
+
+		it("does not flip a user-selected alias back to auto-managed on schema re-registration", () => {
+			const pi = createMockPi();
+			const path = "/x/node_modules/@benvargas/pi-exa-mcp/extensions/index.ts";
+			pi.getAllTools.mockReturnValue([mockTool("web_search_exa", { path, description: "v1" })]);
+			registerAliasesIsolated(pi, tempDir);
+			expect(_test.autoActivatedAliases.has("mcp__exa_mcp__web_search_exa")).toBe(true);
+
+			// Simulate promotion to user-selected (user kept the alias deliberately).
+			_test.autoActivatedAliases.delete("mcp__exa_mcp__web_search_exa");
+
+			// Source schema changes → alias re-registered, but provenance must not flip:
+			// pi preserves activation for same-name re-registrations.
+			pi.getAllTools.mockReturnValue([mockTool("web_search_exa", { path, description: "v2" })]);
+			registerAliasesIsolated(pi, tempDir);
+			expect(pi.registerTool).toHaveBeenCalledTimes(2);
+			expect(_test.autoActivatedAliases.has("mcp__exa_mcp__web_search_exa")).toBe(false);
 		});
 
 		it("registers alias stubs whose execute throws instead of shadow-executing", async () => {
@@ -925,6 +951,30 @@ describe("pi-claude-code-use", () => {
 
 		_test.syncAliasActivation(pi as unknown as ExtensionAPI, true);
 		expect(pi.setActiveTools).toHaveBeenCalledWith(["read"]);
+	});
+
+	it("records the managed baseline even when the first sync is a no-op, enabling later promotion", () => {
+		const pi = createMockPi();
+		_test.refreshAliasMap([], [["web_search_exa", "mcp__exa_mcp__web_search_exa"]]);
+		_test.registeredMcpAliases.add("mcp__exa_mcp__web_search_exa");
+		// Pi already auto-activated the fresh alias, and registration marked it auto-managed.
+		_test.autoActivatedAliases.add("mcp__exa_mcp__web_search_exa");
+
+		pi.getAllTools.mockReturnValue([mockTool("web_search_exa"), mockTool("mcp__exa_mcp__web_search_exa")]);
+		pi.getActiveTools.mockReturnValue(["read", "web_search_exa", "mcp__exa_mcp__web_search_exa"]);
+
+		// First sync: everything already in the desired state → no setActiveTools
+		// call, but the baseline must still be recorded.
+		_test.syncAliasActivation(pi as unknown as ExtensionAPI, true);
+		expect(pi.setActiveTools).not.toHaveBeenCalled();
+		expect(_test.getLastManagedToolList()).toEqual(["read", "web_search_exa", "mcp__exa_mcp__web_search_exa"]);
+
+		// User removes the flat tool via the picker but keeps the alias: promotion
+		// must recognize the deliberate choice and preserve the alias.
+		pi.getActiveTools.mockReturnValue(["read", "mcp__exa_mcp__web_search_exa"]);
+		_test.syncAliasActivation(pi as unknown as ExtensionAPI, true);
+		expect(pi.setActiveTools).not.toHaveBeenCalled();
+		expect(_test.autoActivatedAliases.has("mcp__exa_mcp__web_search_exa")).toBe(false);
 	});
 
 	it("preserves aliases the user explicitly enabled via the tool picker", () => {

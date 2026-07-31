@@ -274,10 +274,17 @@ function filterAndRemapTools(tools: unknown[] | undefined, disableFilter: boolea
 		if (mcpAlias) {
 			const aliasLc = lower(mcpAlias);
 			if ((advertised.has(aliasLc) || registeredMcpAliases.has(aliasLc)) && !emitted.has(aliasLc)) {
-				// Prefer the advertised alias entry to preserve its metadata,
-				// including cache_control; otherwise rename the flat entry.
+				// Rename the FLAT entry: it always carries the source tool's current
+				// schema, whereas an advertised alias stub can lag one turn behind a
+				// mid-session source schema update. Preserve the advertised alias
+				// entry's cache_control so prompt-cache breakpoints survive.
 				emitted.add(aliasLc);
-				result.push(toolsByName.get(aliasLc) ?? { ...tool, name: mcpAlias });
+				const advertisedAlias = toolsByName.get(aliasLc);
+				const renamed: Record<string, unknown> = { ...tool, name: mcpAlias };
+				if (advertisedAlias?.cache_control !== undefined && renamed.cache_control === undefined) {
+					renamed.cache_control = advertisedAlias.cache_control;
+				}
+				result.push(renamed);
 			} else if (disableFilter && !emitted.has(nameLc)) {
 				// Filter disabled: keep flat name if not yet emitted
 				emitted.add(nameLc);
@@ -603,6 +610,7 @@ function registerMcpAliases(pi: ExtensionAPI, opts: { cwd?: string; agentDir?: s
 			// Never shadow an existing tool (e.g. a real MCP tool from another extension).
 			return;
 		}
+		const isNewRegistration = !registeredMcpAliases.has(mcpLc);
 		pi.registerTool({
 			name: mcpName,
 			label: `MCP ${tool.name}`,
@@ -621,11 +629,15 @@ function registerMcpAliases(pi: ExtensionAPI, opts: { cwd?: string; agentDir?: s
 		registeredMcpAliases.add(mcpLc);
 		registeredAliasRoutes.set(mcpLc, tool.name);
 		aliasSourceMeta.set(mcpLc, meta);
-		// Pi auto-activates newly registered tools. Track the alias as
-		// auto-managed so syncAliasActivation can deactivate it when OAuth is off
-		// or the flat source tool is inactive, instead of mistaking Pi's implicit
-		// activation for a user selection.
-		autoActivatedAliases.add(mcpName);
+		// Pi auto-activates newly registered tool NAMES (not same-name
+		// re-registrations, which preserve activation). Track only first-time
+		// registrations as auto-managed so syncAliasActivation can deactivate
+		// them when OAuth is off or the flat source tool is inactive, without
+		// flipping the provenance of a user-selected alias whose source schema
+		// merely changed.
+		if (isNewRegistration) {
+			autoActivatedAliases.add(mcpName);
+		}
 	};
 
 	// Aliasable tools, in deterministic order so collision suffixes are stable.
@@ -636,17 +648,22 @@ function registerMcpAliases(pi: ExtensionAPI, opts: { cwd?: string; agentDir?: s
 		})
 		.sort((a, b) => (lower(a.name) < lower(b.name) ? -1 : 1));
 
-	const derivedPairs: ToolAliasPair[] = [];
-	const seenFlat = new Set<string>();
+	// Exclude case-insensitive duplicate flat names entirely: all alias state
+	// is keyed by lowercased names, so aliasing either variant could route a
+	// call for one tool to the other (pi's execution lookup is exact-name).
+	const flatNameCounts = new Map<string, number>();
 	for (const tool of aliasable) {
 		const flatLc = lower(tool.name);
-		if (seenFlat.has(flatLc)) {
-			// Two registry tools differing only in case would share one alias slot;
-			// alias the first (sorted) one deterministically and skip the rest.
-			console.warn(`[pi-claude-code-use] Skipping alias for "${tool.name}": case-insensitive duplicate tool name`);
+		flatNameCounts.set(flatLc, (flatNameCounts.get(flatLc) ?? 0) + 1);
+	}
+
+	const derivedPairs: ToolAliasPair[] = [];
+	for (const tool of aliasable) {
+		const flatLc = lower(tool.name);
+		if ((flatNameCounts.get(flatLc) ?? 0) > 1) {
+			console.warn(`[pi-claude-code-use] Not aliasing "${tool.name}": case-insensitive duplicate tool name`);
 			continue;
 		}
-		seenFlat.add(flatLc);
 
 		const override = userOverrides.get(flatLc);
 		if (override) {
@@ -731,8 +748,12 @@ function syncAliasActivation(pi: ExtensionAPI, enableAliases: boolean): void {
 
 		if (next.length !== activeNames.length || next.some((n, i) => n !== activeNames[i])) {
 			pi.setActiveTools(next);
-			lastManagedToolList = [...next];
 		}
+		// Record the managed state even when nothing changed (pi may have
+		// auto-activated a fresh alias, making the first sync a no-op). The
+		// promote-to-user-selected logic needs this baseline to recognize a
+		// user's later picker changes.
+		lastManagedToolList = [...next];
 	} else {
 		// Remove only auto-activated aliases; user-selected ones are preserved
 		const next = activeNames.filter((n) => !autoActivatedAliases.has(n));
