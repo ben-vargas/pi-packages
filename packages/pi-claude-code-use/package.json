@@ -1,7 +1,7 @@
 {
   "name": "@benvargas/pi-claude-code-use",
-  "version": "1.0.5",
-  "description": "Patch Anthropic OAuth payloads and companion tools for Claude Code-style subscription use",
+  "version": "2.0.0",
+  "description": "Patch Anthropic OAuth payloads and auto-alias extension tools for Claude Code-style subscription use",
   "keywords": [
     "pi",
     "pi-package",
@@ -24,15 +24,8 @@
       "./extensions/index.ts"
     ]
   },
-  "dependencies": {
-    "@mariozechner/jiti": "^2.6.5"
-  },
   "peerDependencies": {
-    "@earendil-works/pi-agent-core": ">=0.74.0",
-    "@earendil-works/pi-ai": ">=0.74.0",
-    "@earendil-works/pi-coding-agent": ">=0.74.0",
-    "@earendil-works/pi-tui": ">=0.74.0",
-    "typebox": "*"
+    "@earendil-works/pi-coding-agent": ">=0.74.0"
   },
   "repository": {
     "type": "git",

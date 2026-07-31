@@ -10,10 +10,10 @@ import piClaudeCodeUse, { _test } from "../extensions/index.js";
 // ============================================================================
 
 /** Build a minimal ToolInfo-compatible object for test mocks. */
-function mockTool(name: string, sourceOverrides?: { baseDir?: string; path?: string }) {
+function mockTool(name: string, sourceOverrides?: { baseDir?: string; path?: string; description?: string }) {
 	return {
 		name,
-		description: "",
+		description: sourceOverrides?.description ?? "",
 		parameters: {} as never,
 		sourceInfo: {
 			path: sourceOverrides?.path ?? "",
@@ -61,6 +61,14 @@ function getRegisteredHandler(pi: ReturnType<typeof createMockPi>, eventName: st
 	return call?.[1] as (event: unknown, ctx: Record<string, unknown>) => Promise<unknown>;
 }
 
+/** Run registerMcpAliases against an isolated (empty) config location. */
+function registerAliasesIsolated(pi: ReturnType<typeof createMockPi>, tempDir: string) {
+	_test.registerMcpAliases(pi as unknown as ExtensionAPI, {
+		cwd: join(tempDir, "project"),
+		agentDir: join(tempDir, "agent"),
+	});
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -69,6 +77,7 @@ describe("pi-claude-code-use", () => {
 	beforeEach(() => {
 		_test.registeredMcpAliases.clear();
 		_test.autoActivatedAliases.clear();
+		_test.aliasAssignments.clear();
 		_test.setLastManagedToolList(undefined);
 		_test.refreshAliasMap([]);
 	});
@@ -84,6 +93,7 @@ describe("pi-claude-code-use", () => {
 		expect(pi.on).toHaveBeenCalledWith("session_start", expect.any(Function));
 		expect(pi.on).toHaveBeenCalledWith("before_agent_start", expect.any(Function));
 		expect(pi.on).toHaveBeenCalledWith("before_provider_request", expect.any(Function));
+		expect(pi.on).toHaveBeenCalledWith("message_end", expect.any(Function));
 		expect(pi.registerProvider).not.toHaveBeenCalled();
 	});
 
@@ -124,14 +134,6 @@ describe("pi-claude-code-use", () => {
 			vi.unstubAllEnvs();
 			rmSync(tempParent, { recursive: true, force: true });
 		}
-	});
-
-	it("does not register alias tools when no companion source tools are loaded", async () => {
-		const pi = createMockPi();
-		pi.getAllTools.mockReturnValue([mockTool("read")]);
-		await piClaudeCodeUse(pi as unknown as ExtensionAPI);
-
-		expect(pi.registerTool).not.toHaveBeenCalled();
 	});
 
 	// ----------------------------------------------------------------
@@ -236,13 +238,14 @@ describe("pi-claude-code-use", () => {
 		expect(toolIds).toEqual(["Read", "web_search", "mcp__custom__lookup"]);
 	});
 
-	it("renames known companion tools to MCP aliases when alias is advertised", () => {
+	it("renames aliased flat tools to MCP aliases when alias is advertised", () => {
+		_test.refreshAliasMap([], [["web_search_exa", "mcp__exa_mcp__web_search_exa"]]);
 		const result = _test.transformPayload(
 			{
 				tools: [
 					{ name: "web_search_exa", description: "Flat", input_schema: {} },
 					{
-						name: "mcp__exa__web_search",
+						name: "mcp__exa_mcp__web_search_exa",
 						description: "Alias",
 						input_schema: {},
 						cache_control: { type: "ephemeral", ttl: "1h" },
@@ -253,7 +256,7 @@ describe("pi-claude-code-use", () => {
 			false,
 		);
 
-		expect((result.tools as { name: string }[]).map((t) => t.name)).toEqual(["mcp__exa__web_search"]);
+		expect((result.tools as { name: string }[]).map((t) => t.name)).toEqual(["mcp__exa_mcp__web_search_exa"]);
 		expect(result.tools).toEqual([
 			expect.objectContaining({
 				description: "Alias",
@@ -262,7 +265,8 @@ describe("pi-claude-code-use", () => {
 		]);
 	});
 
-	it("filters companion tools when MCP alias is not in the tool list", () => {
+	it("filters aliased flat tools when the MCP alias is not in the tool list", () => {
+		_test.refreshAliasMap([], [["web_search_exa", "mcp__exa_mcp__web_search_exa"]]);
 		const result = _test.transformPayload(
 			{
 				tools: [{ name: "web_search_exa", description: "Orphan", input_schema: {} }],
@@ -275,11 +279,12 @@ describe("pi-claude-code-use", () => {
 	});
 
 	it("passes all tools through unchanged when filter is disabled", () => {
+		_test.refreshAliasMap([], [["web_search_exa", "mcp__exa_mcp__web_search_exa"]]);
 		const result = _test.transformPayload(
 			{
 				tools: [
 					{ name: "web_search_exa", description: "Flat", input_schema: {} },
-					{ name: "mcp__exa__web_search", description: "Alias", input_schema: {} },
+					{ name: "mcp__exa_mcp__web_search_exa", description: "Alias", input_schema: {} },
 					{ name: "totally_unknown", description: "Custom ext", input_schema: {} },
 				],
 				messages: [],
@@ -289,7 +294,7 @@ describe("pi-claude-code-use", () => {
 
 		expect((result.tools as { name: string }[]).map((t) => t.name)).toEqual([
 			"web_search_exa",
-			"mcp__exa__web_search",
+			"mcp__exa_mcp__web_search_exa",
 			"totally_unknown",
 		]);
 	});
@@ -298,20 +303,21 @@ describe("pi-claude-code-use", () => {
 	// tool_choice remapping
 	// ----------------------------------------------------------------
 
-	it("remaps tool_choice from flat companion name to MCP alias", () => {
+	it("remaps tool_choice from flat name to MCP alias", () => {
+		_test.refreshAliasMap([], [["web_search_exa", "mcp__exa_mcp__web_search_exa"]]);
 		const result = _test.transformPayload(
 			{
 				tool_choice: { type: "tool", name: "web_search_exa" },
 				tools: [
 					{ name: "web_search_exa", input_schema: {} },
-					{ name: "mcp__exa__web_search", input_schema: {} },
+					{ name: "mcp__exa_mcp__web_search_exa", input_schema: {} },
 				],
 				messages: [],
 			},
 			false,
 		);
 
-		expect(result.tool_choice).toEqual({ type: "tool", name: "mcp__exa__web_search" });
+		expect(result.tool_choice).toEqual({ type: "tool", name: "mcp__exa_mcp__web_search_exa" });
 	});
 
 	it("clears tool_choice when the referenced tool is filtered out", () => {
@@ -351,6 +357,7 @@ describe("pi-claude-code-use", () => {
 	// ----------------------------------------------------------------
 
 	it("renames tool_use blocks in message history when MCP alias survives filtering", () => {
+		_test.refreshAliasMap([], [["web_search_exa", "mcp__exa_mcp__web_search_exa"]]);
 		const result = _test.transformPayload(
 			{
 				messages: [
@@ -368,7 +375,7 @@ describe("pi-claude-code-use", () => {
 				],
 				tools: [
 					{ name: "web_search_exa", input_schema: {} },
-					{ name: "mcp__exa__web_search", input_schema: {} },
+					{ name: "mcp__exa_mcp__web_search_exa", input_schema: {} },
 				],
 			},
 			false,
@@ -379,7 +386,7 @@ describe("pi-claude-code-use", () => {
 				role: "assistant",
 				content: [
 					{ type: "text", text: "Searching..." },
-					{ type: "tool_use", id: "toolu_abc", name: "mcp__exa__web_search", input: { q: "test" } },
+					{ type: "tool_use", id: "toolu_abc", name: "mcp__exa_mcp__web_search_exa", input: { q: "test" } },
 				],
 			},
 			{
@@ -390,6 +397,7 @@ describe("pi-claude-code-use", () => {
 	});
 
 	it("preserves tool_use names when no MCP alias survives filtering", () => {
+		_test.refreshAliasMap([], [["web_search_exa", "mcp__exa_mcp__web_search_exa"]]);
 		const result = _test.transformPayload(
 			{
 				messages: [
@@ -416,6 +424,7 @@ describe("pi-claude-code-use", () => {
 	// ----------------------------------------------------------------
 
 	it("applies all transforms together: system rewrite, tool filter, tool_choice, messages", () => {
+		_test.refreshAliasMap([], [["web_search_exa", "mcp__exa_mcp__web_search_exa"]]);
 		const result = _test.transformPayload(
 			{
 				model: "claude-opus-4-6",
@@ -436,7 +445,7 @@ describe("pi-claude-code-use", () => {
 					{ name: "Read", description: "Read files", input_schema: {} },
 					{ type: "web_search", name: "web_search", search_context_size: "high" },
 					{ name: "web_search_exa", description: "Exa", input_schema: {} },
-					{ name: "mcp__exa__web_search", description: "Alias", input_schema: {} },
+					{ name: "mcp__exa_mcp__web_search_exa", description: "Alias", input_schema: {} },
 					{ name: "mcp__custom__tool", description: "Custom", input_schema: {} },
 					{ name: "unknown_flat", description: "Dropped", input_schema: {} },
 				],
@@ -460,7 +469,7 @@ describe("pi-claude-code-use", () => {
 		expect((result.tools as { name?: string; type?: string }[]).map((t) => t.name ?? t.type)).toEqual([
 			"Read",
 			"web_search",
-			"mcp__exa__web_search",
+			"mcp__exa_mcp__web_search_exa",
 			"mcp__custom__tool",
 		]);
 
@@ -469,6 +478,7 @@ describe("pi-claude-code-use", () => {
 	});
 
 	it("passes tools, tool_choice, and messages through unchanged with filter disabled", () => {
+		_test.refreshAliasMap([], [["web_search_exa", "mcp__exa_mcp__web_search_exa"]]);
 		const result = _test.transformPayload(
 			{
 				messages: [
@@ -480,7 +490,7 @@ describe("pi-claude-code-use", () => {
 				tool_choice: { type: "tool", name: "web_search_exa" },
 				tools: [
 					{ name: "web_search_exa", description: "Flat", input_schema: {} },
-					{ name: "mcp__exa__web_search", description: "Alias", input_schema: {} },
+					{ name: "mcp__exa_mcp__web_search_exa", description: "Alias", input_schema: {} },
 					{ name: "custom_ext_tool", description: "Custom", input_schema: {} },
 				],
 			},
@@ -489,7 +499,7 @@ describe("pi-claude-code-use", () => {
 
 		expect((result.tools as { name: string }[]).map((t) => t.name)).toEqual([
 			"web_search_exa",
-			"mcp__exa__web_search",
+			"mcp__exa_mcp__web_search_exa",
 			"custom_ext_tool",
 		]);
 		expect(result.tool_choice).toEqual({ type: "tool", name: "web_search_exa" });
@@ -502,151 +512,294 @@ describe("pi-claude-code-use", () => {
 	});
 
 	// ----------------------------------------------------------------
-	// Companion source matching
+	// Alias derivation
 	// ----------------------------------------------------------------
 
-	it("matches companion source by directory name from package root", () => {
-		const spec = { dirName: "pi-exa-mcp", packageName: "@benvargas/pi-exa-mcp", aliases: [] as const };
-		expect(
-			_test.isCompanionSource(
-				{
-					name: "web_search_exa",
-					sourceInfo: {
-						baseDir: "/tmp/node_modules/@benvargas/pi-exa-mcp",
-						path: "/tmp/node_modules/@benvargas/pi-exa-mcp/extensions/index.ts",
-					},
-				} as never,
-				spec,
-			),
-		).toBe(true);
+	describe("alias derivation", () => {
+		it("derives server segment from a scoped npm package path", () => {
+			expect(
+				_test.deriveServerSegment({
+					path: "/home/u/.pi/agent/node_modules/@benvargas/pi-exa-mcp/extensions/index.ts",
+					source: "t",
+					scope: "user",
+					origin: "package",
+				} as never),
+			).toBe("exa_mcp");
+		});
+
+		it("derives server segment from an unscoped npm package path", () => {
+			expect(
+				_test.deriveServerSegment({
+					path: "/x/node_modules/pi-web-providers/dist/index.js",
+					source: "t",
+					scope: "user",
+					origin: "package",
+				} as never),
+			).toBe("web_providers");
+		});
+
+		it("derives server segment from a monorepo package directory", () => {
+			expect(
+				_test.deriveServerSegment({
+					path: "/home/u/.pi/agent/git/github.com/ben-vargas/pi-packages/packages/pi-firecrawl/extensions/index.ts",
+					source: "t",
+					scope: "user",
+					origin: "package",
+				} as never),
+			).toBe("firecrawl");
+		});
+
+		it("derives server segment from a single-file extension stem", () => {
+			expect(
+				_test.deriveServerSegment({
+					path: "/home/u/.pi/agent/extensions/my-tool.ts",
+					source: "t",
+					scope: "user",
+					origin: "file",
+				} as never),
+			).toBe("my_tool");
+		});
+
+		it("uses 'pi' for synthetic builtin/sdk sources", () => {
+			expect(
+				_test.deriveServerSegment({
+					path: "<builtin:ls>",
+					source: "builtin",
+					scope: "user",
+					origin: "builtin",
+				} as never),
+			).toBe("pi");
+			expect(_test.deriveServerSegment(undefined)).toBe("pi");
+		});
+
+		it("handles Windows-style backslash paths", () => {
+			expect(
+				_test.deriveServerSegment({
+					path: "C:\\Users\\dev\\node_modules\\@benvargas\\pi-exa-mcp\\extensions\\index.ts",
+					source: "t",
+					scope: "user",
+					origin: "package",
+				} as never),
+			).toBe("exa_mcp");
+		});
+
+		it("builds full alias names from server segment and sanitized tool name", () => {
+			const tool = mockTool("web_search_exa", {
+				path: "/x/node_modules/@benvargas/pi-exa-mcp/extensions/index.ts",
+			});
+			expect(_test.deriveAliasBase(tool as never)).toBe("mcp__exa_mcp__web_search_exa");
+		});
+
+		it("sanitizes hostile segments and falls back when empty", () => {
+			expect(_test.sanitizeAliasSegment("Weird Name!!", "ext")).toBe("weird_name");
+			expect(_test.sanitizeAliasSegment("---", "ext")).toBe("ext");
+		});
+
+		it("resolves collisions with deterministic numeric suffixes", () => {
+			const taken = new Set(["mcp__ext__tool"]);
+			expect(_test.reserveAliasName("mcp__ext__tool", taken)).toBe("mcp__ext__tool_2");
+			taken.add("mcp__ext__tool_2");
+			expect(_test.reserveAliasName("mcp__ext__tool", taken)).toBe("mcp__ext__tool_3");
+		});
+
+		it("keeps alias names within the 128-char limit even with suffixes", () => {
+			const base = `mcp__server__${"x".repeat(140)}`;
+			const taken = new Set<string>();
+			const first = _test.reserveAliasName(base, taken);
+			expect(first.length).toBe(128);
+			taken.add(first.toLowerCase());
+			const second = _test.reserveAliasName(base, taken);
+			expect(second.length).toBeLessThanOrEqual(128);
+			expect(second.endsWith("_2")).toBe(true);
+		});
 	});
 
-	it("matches companion source from extensions/ subdirectory layout", () => {
-		const spec = { dirName: "pi-exa-mcp", packageName: "@benvargas/pi-exa-mcp", aliases: [] as const };
-		expect(
-			_test.isCompanionSource(
-				{
-					name: "web_search_exa",
-					sourceInfo: {
-						baseDir: "/worktree/packages/pi-exa-mcp/extensions",
-						path: "/worktree/packages/pi-exa-mcp/extensions/index.ts",
-					},
-				} as never,
-				spec,
-			),
-		).toBe(true);
-	});
+	// ----------------------------------------------------------------
+	// Dynamic alias registration (getAllTools-based)
+	// ----------------------------------------------------------------
 
-	it("rejects tools from unrelated extension directories", () => {
-		const spec = {
-			dirName: "pi-antigravity-image-gen",
-			packageName: "@benvargas/pi-antigravity-image-gen",
-			aliases: [] as const,
-		};
-		expect(
-			_test.isCompanionSource(
-				{
-					name: "generate_image",
-					sourceInfo: {
-						baseDir: "/tmp/some-other-extension",
-						path: "/tmp/some-other-extension/extensions/index.ts",
-					},
-				} as never,
-				spec,
-			),
-		).toBe(false);
-	});
+	describe("registerMcpAliases", () => {
+		let tempDir: string;
 
-	it("matches companion source via path when baseDir is absent", () => {
-		const spec = { dirName: "pi-exa-mcp", packageName: "@benvargas/pi-exa-mcp", aliases: [] as const };
-		expect(
-			_test.isCompanionSource(
-				{
-					name: "web_search_exa",
-					sourceInfo: {
-						path: "/worktree/node_modules/@benvargas/pi-exa-mcp/extensions/index.ts",
-						source: "test",
-						scope: "user" as const,
-						origin: "package" as const,
-					},
-				} as never,
-				spec,
-			),
-		).toBe(true);
-	});
+		beforeEach(() => {
+			tempDir = mkdtempSync(join(tmpdir(), "pi-claude-code-use-"));
+		});
 
-	it("rejects tools from packages whose names are prefixes of the companion package", () => {
-		const spec = { dirName: "pi-exa-mcp", packageName: "@benvargas/pi-exa-mcp", aliases: [] as const };
-		expect(
-			_test.isCompanionSource(
-				{
-					name: "web_search_exa",
-					sourceInfo: {
-						path: "/worktree/node_modules/@benvargas/pi-exa-mcp-wrapper/extensions/index.ts",
-						source: "test",
-						scope: "user" as const,
-						origin: "package" as const,
-					},
-				} as never,
-				spec,
-			),
-		).toBe(false);
-	});
+		afterEach(() => {
+			rmSync(tempDir, { recursive: true, force: true });
+		});
 
-	it("matches companion source via dirName fallback for monorepo/git installs", () => {
-		const spec = { dirName: "pi-exa-mcp", packageName: "@benvargas/pi-exa-mcp", aliases: [] as const };
-		expect(
-			_test.isCompanionSource(
-				{
-					name: "web_search_exa",
-					sourceInfo: {
-						// baseDir is the monorepo root, not the individual package
-						baseDir: "/home/user/.pi/agent/git/github.com/ben-vargas/pi-packages",
-						path: "/home/user/.pi/agent/git/github.com/ben-vargas/pi-packages/packages/pi-exa-mcp/extensions/index.ts",
-						source: "test",
-						scope: "user" as const,
-						origin: "package" as const,
-					},
-				} as never,
-				spec,
-			),
-		).toBe(true);
-	});
+		it("registers derived MCP aliases for non-core flat tools", () => {
+			const pi = createMockPi();
+			pi.getAllTools.mockReturnValue([
+				mockTool("read"),
+				mockTool("web_search_exa", {
+					path: "/x/node_modules/@benvargas/pi-exa-mcp/extensions/index.ts",
+					description: "Search the web with Exa",
+				}),
+			]);
 
-	it("matches companion source via Windows-style backslash paths", () => {
-		const spec = { dirName: "pi-exa-mcp", packageName: "@benvargas/pi-exa-mcp", aliases: [] as const };
-		expect(
-			_test.isCompanionSource(
-				{
-					name: "web_search_exa",
-					sourceInfo: {
-						path: "C:\\Users\\dev\\node_modules\\@benvargas\\pi-exa-mcp\\extensions\\index.ts",
-						source: "test",
-						scope: "user" as const,
-						origin: "package" as const,
-					},
-				} as never,
-				spec,
-			),
-		).toBe(true);
+			registerAliasesIsolated(pi, tempDir);
+
+			expect(pi.registerTool).toHaveBeenCalledTimes(1);
+			expect(pi.registerTool).toHaveBeenCalledWith(
+				expect.objectContaining({
+					name: "mcp__exa_mcp__web_search_exa",
+					label: "MCP web_search_exa",
+					description: "Search the web with Exa",
+				}),
+			);
+			expect(_test.FLAT_TO_MCP.get("web_search_exa")).toBe("mcp__exa_mcp__web_search_exa");
+			expect(_test.MCP_TO_FLAT.get("mcp__exa_mcp__web_search_exa")).toBe("web_search_exa");
+			expect(_test.registeredMcpAliases.has("mcp__exa_mcp__web_search_exa")).toBe(true);
+		});
+
+		it("does not alias core tools or mcp__-prefixed tools", () => {
+			const pi = createMockPi();
+			pi.getAllTools.mockReturnValue([mockTool("read"), mockTool("Bash"), mockTool("mcp__real__server_tool")]);
+
+			registerAliasesIsolated(pi, tempDir);
+
+			expect(pi.registerTool).not.toHaveBeenCalled();
+			expect(_test.FLAT_TO_MCP.size).toBe(0);
+		});
+
+		it("picks up tools registered by other extensions' lifecycle hooks on a later pass", () => {
+			const pi = createMockPi();
+			// First pass: companion extension has not registered its tools yet.
+			pi.getAllTools.mockReturnValue([mockTool("read")]);
+			registerAliasesIsolated(pi, tempDir);
+			expect(pi.registerTool).not.toHaveBeenCalled();
+
+			// Second pass (before_agent_start): hook-registered tool now present.
+			pi.getAllTools.mockReturnValue([
+				mockTool("read"),
+				mockTool("web_search", { path: "/x/node_modules/pi-web-providers/dist/index.js" }),
+			]);
+			registerAliasesIsolated(pi, tempDir);
+
+			expect(pi.registerTool).toHaveBeenCalledWith(expect.objectContaining({ name: "mcp__web_providers__web_search" }));
+			expect(_test.FLAT_TO_MCP.get("web_search")).toBe("mcp__web_providers__web_search");
+		});
+
+		it("registers alias stubs whose execute throws instead of shadow-executing", async () => {
+			const pi = createMockPi();
+			pi.getAllTools.mockReturnValue([
+				mockTool("web_search_exa", { path: "/x/node_modules/@benvargas/pi-exa-mcp/extensions/index.ts" }),
+			]);
+
+			registerAliasesIsolated(pi, tempDir);
+
+			const def = pi.registerTool.mock.calls[0]?.[0] as {
+				execute: (...args: unknown[]) => Promise<unknown>;
+			};
+			await expect(def.execute()).rejects.toThrow(/routed it to "web_search_exa"/);
+		});
+
+		it("assigns deterministic suffixes when two tools derive the same alias", () => {
+			const pi = createMockPi();
+			pi.getAllTools.mockReturnValue([
+				// Distinct flat names that sanitize to the same alias segment:
+				mockTool("my-search", { path: "/x/node_modules/pi-ext-a/index.js" }),
+				mockTool("my_search", { path: "/y/node_modules/pi-ext-a/index.js" }),
+			]);
+
+			registerAliasesIsolated(pi, tempDir);
+
+			const names = pi.registerTool.mock.calls.map((c) => (c[0] as { name: string }).name).sort();
+			expect(names).toEqual(["mcp__ext_a__my_search", "mcp__ext_a__my_search_2"]);
+			// Sorted by lowercased flat name: "my-search" < "my_search" — order is deterministic.
+			expect(_test.FLAT_TO_MCP.get("my-search")).toBe("mcp__ext_a__my_search");
+			expect(_test.FLAT_TO_MCP.get("my_search")).toBe("mcp__ext_a__my_search_2");
+		});
+
+		it("does not derive an alias name that collides with an existing tool", () => {
+			const pi = createMockPi();
+			pi.getAllTools.mockReturnValue([
+				mockTool("mcp__ext_a__search"),
+				mockTool("search", { path: "/x/node_modules/pi-ext-a/index.js" }),
+			]);
+
+			registerAliasesIsolated(pi, tempDir);
+
+			expect(pi.registerTool).toHaveBeenCalledTimes(1);
+			expect(pi.registerTool).toHaveBeenCalledWith(expect.objectContaining({ name: "mcp__ext_a__search_2" }));
+		});
+
+		it("keeps alias assignments stable across repeated passes", () => {
+			const pi = createMockPi();
+			const tools = [mockTool("web_search_exa", { path: "/x/node_modules/@benvargas/pi-exa-mcp/extensions/index.ts" })];
+			pi.getAllTools.mockReturnValue(tools);
+
+			registerAliasesIsolated(pi, tempDir);
+			const firstAlias = _test.FLAT_TO_MCP.get("web_search_exa");
+
+			// Second pass: the alias tool is now part of the registry.
+			pi.getAllTools.mockReturnValue([...tools, mockTool(firstAlias as string)]);
+			registerAliasesIsolated(pi, tempDir);
+
+			expect(_test.FLAT_TO_MCP.get("web_search_exa")).toBe(firstAlias);
+			// Registered exactly once.
+			expect(pi.registerTool).toHaveBeenCalledTimes(1);
+		});
+
+		it("skips auto-derivation when PI_CLAUDE_CODE_USE_DISABLE_AUTO_ALIAS=1", () => {
+			vi.stubEnv("PI_CLAUDE_CODE_USE_DISABLE_AUTO_ALIAS", "1");
+			try {
+				const pi = createMockPi();
+				pi.getAllTools.mockReturnValue([
+					mockTool("web_search_exa", { path: "/x/node_modules/@benvargas/pi-exa-mcp/extensions/index.ts" }),
+				]);
+
+				registerAliasesIsolated(pi, tempDir);
+
+				expect(pi.registerTool).not.toHaveBeenCalled();
+				expect(_test.FLAT_TO_MCP.size).toBe(0);
+			} finally {
+				vi.unstubAllEnvs();
+			}
+		});
+
+		it("still applies user-configured aliases when auto-derivation is disabled", () => {
+			vi.stubEnv("PI_CLAUDE_CODE_USE_DISABLE_AUTO_ALIAS", "1");
+			try {
+				const projectDir = join(tempDir, "project");
+				const configPath = join(projectDir, ".pi", "extensions", "pi-claude-code-use.json");
+				mkdirSync(dirname(configPath), { recursive: true });
+				writeFileSync(configPath, JSON.stringify({ toolAliases: [["web_search_exa", "mcp__exa__web_search"]] }));
+
+				const pi = createMockPi();
+				pi.getAllTools.mockReturnValue([
+					mockTool("web_search_exa", { path: "/x/node_modules/@benvargas/pi-exa-mcp/extensions/index.ts" }),
+				]);
+
+				registerAliasesIsolated(pi, tempDir);
+
+				expect(pi.registerTool).toHaveBeenCalledWith(expect.objectContaining({ name: "mcp__exa__web_search" }));
+				expect(_test.FLAT_TO_MCP.get("web_search_exa")).toBe("mcp__exa__web_search");
+			} finally {
+				vi.unstubAllEnvs();
+			}
+		});
 	});
 
 	// ----------------------------------------------------------------
 	// Alias activation tracking
 	// ----------------------------------------------------------------
 
-	it("activates MCP aliases for active companion tools, then removes them on disable", () => {
+	it("activates MCP aliases for active flat source tools, then removes them on disable", () => {
 		const pi = createMockPi();
-		_test.registeredMcpAliases.add("mcp__exa__web_search");
-		pi.getAllTools.mockReturnValue([mockTool("web_search_exa"), mockTool("mcp__exa__web_search")]);
+		_test.refreshAliasMap([], [["web_search_exa", "mcp__exa_mcp__web_search_exa"]]);
+		_test.registeredMcpAliases.add("mcp__exa_mcp__web_search_exa");
+		pi.getAllTools.mockReturnValue([mockTool("web_search_exa"), mockTool("mcp__exa_mcp__web_search_exa")]);
 		pi.getActiveTools.mockReturnValue(["read", "web_search_exa"]);
 
 		_test.syncAliasActivation(pi as unknown as ExtensionAPI, true);
-		expect(pi.setActiveTools).toHaveBeenCalledWith(["read", "web_search_exa", "mcp__exa__web_search"]);
+		expect(pi.setActiveTools).toHaveBeenCalledWith(["read", "web_search_exa", "mcp__exa_mcp__web_search_exa"]);
 
 		// Now disable: should remove the alias
 		pi.setActiveTools.mockClear();
-		pi.getActiveTools.mockReturnValue(["read", "web_search_exa", "mcp__exa__web_search"]);
+		pi.getActiveTools.mockReturnValue(["read", "web_search_exa", "mcp__exa_mcp__web_search_exa"]);
 
 		_test.syncAliasActivation(pi as unknown as ExtensionAPI, false);
 		expect(pi.setActiveTools).toHaveBeenCalledWith(["read", "web_search_exa"]);
@@ -679,13 +832,14 @@ describe("pi-claude-code-use", () => {
 
 	it("prunes auto-activated aliases when their flat counterpart is no longer active", () => {
 		const pi = createMockPi();
-		_test.registeredMcpAliases.add("mcp__exa__web_search");
-		_test.autoActivatedAliases.add("mcp__exa__web_search");
-		_test.setLastManagedToolList(["read", "mcp__exa__web_search"]);
+		_test.refreshAliasMap([], [["web_search_exa", "mcp__exa_mcp__web_search_exa"]]);
+		_test.registeredMcpAliases.add("mcp__exa_mcp__web_search_exa");
+		_test.autoActivatedAliases.add("mcp__exa_mcp__web_search_exa");
+		_test.setLastManagedToolList(["read", "mcp__exa_mcp__web_search_exa"]);
 
-		pi.getAllTools.mockReturnValue([mockTool("web_search_exa"), mockTool("mcp__exa__web_search")]);
+		pi.getAllTools.mockReturnValue([mockTool("web_search_exa"), mockTool("mcp__exa_mcp__web_search_exa")]);
 		// web_search_exa is NOT active, only the alias is (stale state)
-		pi.getActiveTools.mockReturnValue(["read", "mcp__exa__web_search"]);
+		pi.getActiveTools.mockReturnValue(["read", "mcp__exa_mcp__web_search_exa"]);
 
 		_test.syncAliasActivation(pi as unknown as ExtensionAPI, true);
 		expect(pi.setActiveTools).toHaveBeenCalledWith(["read"]);
@@ -693,12 +847,13 @@ describe("pi-claude-code-use", () => {
 
 	it("preserves aliases the user explicitly enabled via the tool picker", () => {
 		const pi = createMockPi();
-		_test.registeredMcpAliases.add("mcp__exa__web_search");
+		_test.refreshAliasMap([], [["web_search_exa", "mcp__exa_mcp__web_search_exa"]]);
+		_test.registeredMcpAliases.add("mcp__exa_mcp__web_search_exa");
 		// Alias is NOT in autoActivatedAliases → user added it manually
 
-		pi.getAllTools.mockReturnValue([mockTool("web_search_exa"), mockTool("mcp__exa__web_search")]);
+		pi.getAllTools.mockReturnValue([mockTool("web_search_exa"), mockTool("mcp__exa_mcp__web_search_exa")]);
 		// web_search_exa is not active, but user manually enabled the MCP alias
-		pi.getActiveTools.mockReturnValue(["read", "mcp__exa__web_search"]);
+		pi.getActiveTools.mockReturnValue(["read", "mcp__exa_mcp__web_search_exa"]);
 
 		_test.syncAliasActivation(pi as unknown as ExtensionAPI, true);
 		// User-selected alias is preserved even without flat counterpart active
@@ -707,14 +862,15 @@ describe("pi-claude-code-use", () => {
 
 	it("promotes auto-activated alias to user-selected when user removes flat but keeps alias", () => {
 		const pi = createMockPi();
-		_test.registeredMcpAliases.add("mcp__exa__web_search");
-		_test.autoActivatedAliases.add("mcp__exa__web_search");
+		_test.refreshAliasMap([], [["web_search_exa", "mcp__exa_mcp__web_search_exa"]]);
+		_test.registeredMcpAliases.add("mcp__exa_mcp__web_search_exa");
+		_test.autoActivatedAliases.add("mcp__exa_mcp__web_search_exa");
 		// Last sync had both flat + alias active
-		_test.setLastManagedToolList(["read", "web_search_exa", "mcp__exa__web_search"]);
+		_test.setLastManagedToolList(["read", "web_search_exa", "mcp__exa_mcp__web_search_exa"]);
 
-		pi.getAllTools.mockReturnValue([mockTool("web_search_exa"), mockTool("mcp__exa__web_search")]);
+		pi.getAllTools.mockReturnValue([mockTool("web_search_exa"), mockTool("mcp__exa_mcp__web_search_exa")]);
 		// User removed web_search_exa (was in last managed) but kept the MCP alias
-		pi.getActiveTools.mockReturnValue(["read", "mcp__exa__web_search"]);
+		pi.getActiveTools.mockReturnValue(["read", "mcp__exa_mcp__web_search_exa"]);
 
 		_test.syncAliasActivation(pi as unknown as ExtensionAPI, true);
 		// Alias promoted to user-selected → preserved even though flat is inactive
@@ -723,13 +879,14 @@ describe("pi-claude-code-use", () => {
 
 	it("prunes auto-activated aliases when flat was never managed (no promotion)", () => {
 		const pi = createMockPi();
-		_test.registeredMcpAliases.add("mcp__exa__web_search");
-		_test.autoActivatedAliases.add("mcp__exa__web_search");
+		_test.refreshAliasMap([], [["web_search_exa", "mcp__exa_mcp__web_search_exa"]]);
+		_test.registeredMcpAliases.add("mcp__exa_mcp__web_search_exa");
+		_test.autoActivatedAliases.add("mcp__exa_mcp__web_search_exa");
 		// Last sync did NOT include web_search_exa → flat was never managed
-		_test.setLastManagedToolList(["read", "mcp__exa__web_search"]);
+		_test.setLastManagedToolList(["read", "mcp__exa_mcp__web_search_exa"]);
 
-		pi.getAllTools.mockReturnValue([mockTool("web_search_exa"), mockTool("mcp__exa__web_search")]);
-		pi.getActiveTools.mockReturnValue(["read", "mcp__exa__web_search"]);
+		pi.getAllTools.mockReturnValue([mockTool("web_search_exa"), mockTool("mcp__exa_mcp__web_search_exa")]);
+		pi.getActiveTools.mockReturnValue(["read", "mcp__exa_mcp__web_search_exa"]);
 
 		_test.syncAliasActivation(pi as unknown as ExtensionAPI, true);
 		// Flat was never in managed list → no promotion, alias is pruned
@@ -738,6 +895,7 @@ describe("pi-claude-code-use", () => {
 
 	it("does not auto-manage MCP aliases that were not registered by this extension", () => {
 		const pi = createMockPi();
+		_test.refreshAliasMap([], [["web_search_exa", "mcp__exa__web_search"]]);
 		// mcp__exa__web_search exists in allTools and activeTools, but is NOT in registeredMcpAliases
 		// (simulates a third-party extension providing this MCP tool directly)
 		pi.getAllTools.mockReturnValue([mockTool("web_search_exa"), mockTool("mcp__exa__web_search")]);
@@ -760,7 +918,7 @@ describe("pi-claude-code-use", () => {
 		// refreshAliasMap stores the mcp value RAW (mixed-case), simulating a user
 		// who put ["my_tool", "MCP__Foo__Bar"] in their pi-claude-code-use.json.
 		_test.refreshAliasMap([["my_tool", "MCP__Foo__Bar"]]);
-		// registerMcpAlias normalizes via lower(mcpName) before adding; mirror that here.
+		// registerMcpAliases normalizes via lower(mcpName) before adding; mirror that here.
 		_test.registeredMcpAliases.add("mcp__foo__bar");
 		pi.getAllTools.mockReturnValue([mockTool("my_tool"), mockTool("MCP__Foo__Bar")]);
 		pi.getActiveTools.mockReturnValue(["read", "my_tool"]);
@@ -782,7 +940,7 @@ describe("pi-claude-code-use", () => {
 	it("preserves user-selected mixed-case mcp aliases on sync", () => {
 		const pi = createMockPi();
 		_test.refreshAliasMap([["my_tool", "MCP__Foo__Bar"]]);
-		// registerMcpAlias normalizes via lower(mcpName) before adding; mirror that here.
+		// registerMcpAliases normalizes via lower(mcpName) before adding; mirror that here.
 		_test.registeredMcpAliases.add("mcp__foo__bar");
 		pi.getAllTools.mockReturnValue([mockTool("my_tool"), mockTool("MCP__Foo__Bar")]);
 		// User manually selected the mixed-case alias via the tool picker.
@@ -794,37 +952,7 @@ describe("pi-claude-code-use", () => {
 
 		// With lower(), the alias is recognized as registered → preserved
 		// → next === activeNames → setActiveTools is NOT called.
-		// Without lower(), the alias is dropped from activeRegistered → next = ["read"]
-		// → setActiveTools(["read"]) is called, silently breaking the user's selection.
 		expect(pi.setActiveTools).not.toHaveBeenCalled();
-	});
-
-	// ----------------------------------------------------------------
-	// Capture shim
-	// ----------------------------------------------------------------
-
-	it("suppresses duplicate registration while gating flags through the capture shim", () => {
-		const pi = {
-			...createMockPi(),
-			getFlag: vi.fn((_name: string) => "test-value"),
-		};
-
-		const captured = new Map();
-		const shim = _test.buildCaptureShim(pi as unknown as ExtensionAPI, captured);
-
-		// Before registration, shim returns undefined (flag not tracked)
-		expect(shim.getFlag("exa-mcp-tools")).toBeUndefined();
-
-		// After registration, shim tracks in shimFlags and delegates getFlag to realPi
-		shim.registerFlag("exa-mcp-tools", { description: "tools", type: "string" });
-		expect(pi.registerFlag).not.toHaveBeenCalled();
-		expect(shim.getFlag("exa-mcp-tools")).toBe("test-value");
-
-		// Unregistered flags still return undefined through shim
-		expect(shim.getFlag("other-flag")).toBeUndefined();
-
-		shim.registerEntryRenderer("captured-entry", () => undefined);
-		expect(pi.registerEntryRenderer).not.toHaveBeenCalled();
 	});
 
 	// ----------------------------------------------------------------
@@ -904,75 +1032,6 @@ describe("pi-claude-code-use", () => {
 	});
 
 	// ----------------------------------------------------------------
-	// Companion loading integration
-	// ----------------------------------------------------------------
-
-	it("registers MCP alias tools from companion extension factories", async () => {
-		const tempParent = mkdtempSync(join(tmpdir(), "pi-claude-code-use-"));
-		const tempRoot = join(tempParent, "pi-exa-mcp");
-		const isolatedAgentDir = join(tempParent, "agent");
-		try {
-			const extDir = join(tempRoot, "extensions");
-			mkdirSync(extDir, { recursive: true });
-			writeFileSync(
-				join(extDir, "index.js"),
-				[
-					'import { StringEnum } from "@mariozechner/pi-ai";',
-					'import { DEFAULT_MAX_BYTES } from "@earendil-works/pi-coding-agent";',
-					'import { Type } from "typebox";',
-					"const schema = Type.Object({ q: StringEnum(['web']) });",
-					"export default function companion(pi) {",
-					"  pi.registerEntryRenderer('test-entry', () => undefined);",
-					"  pi.registerTool({",
-					'    name: "web_search_exa",',
-					"    description: 'Search web ' + String(DEFAULT_MAX_BYTES),",
-					"    inputSchema: schema,",
-					"    async execute() { return { content: [{ type: 'text', text: String(DEFAULT_MAX_BYTES) }] }; }",
-					"  });",
-					"}",
-				].join("\n"),
-				"utf-8",
-			);
-
-			const pi = createMockPi();
-			pi.getAllTools.mockReturnValue([
-				mockTool("web_search_exa", { baseDir: tempRoot, path: join(extDir, "index.js") }),
-			]);
-
-			await _test.registerMcpAliases(pi as unknown as ExtensionAPI, {
-				cwd: tempParent,
-				agentDir: isolatedAgentDir,
-			});
-
-			expect(pi.registerTool).toHaveBeenCalledWith(expect.objectContaining({ name: "mcp__exa__web_search" }));
-			expect(pi.registerEntryRenderer).not.toHaveBeenCalled();
-		} finally {
-			rmSync(tempParent, { recursive: true, force: true });
-		}
-	});
-
-	it("refuses to alias tools from unrelated packages even if names match", async () => {
-		const tempParent = mkdtempSync(join(tmpdir(), "pi-claude-code-use-"));
-		try {
-			const pi = createMockPi();
-			pi.getAllTools.mockReturnValue([
-				mockTool("generate_image", {
-					baseDir: "/tmp/node_modules/some-random-ext",
-					path: "/tmp/node_modules/some-random-ext/extensions/index.ts",
-				}),
-			]);
-
-			await _test.registerMcpAliases(pi as unknown as ExtensionAPI, {
-				cwd: tempParent,
-				agentDir: join(tempParent, "agent"),
-			});
-			expect(pi.registerTool).not.toHaveBeenCalled();
-		} finally {
-			rmSync(tempParent, { recursive: true, force: true });
-		}
-	});
-
-	// ----------------------------------------------------------------
 	// User-defined tool aliases (pi-claude-code-use.json)
 	// ----------------------------------------------------------------
 
@@ -1044,84 +1103,111 @@ describe("pi-claude-code-use", () => {
 			expect(load()).toEqual([]);
 		});
 
-		it("removes stale user aliases when project config changes", async () => {
+		it("user overrides win over derived aliases", () => {
+			writeFileSync(projectConfigPath, JSON.stringify({ toolAliases: [["web_search_exa", "mcp__exa__web_search"]] }));
+
 			const pi = createMockPi();
+			pi.getAllTools.mockReturnValue([
+				mockTool("web_search_exa", { path: "/x/node_modules/@benvargas/pi-exa-mcp/extensions/index.ts" }),
+			]);
 
-			writeFileSync(projectConfigPath, JSON.stringify({ toolAliases: [["subagent", "mcp__subagent__run"]] }));
-			await _test.registerMcpAliases(pi as unknown as ExtensionAPI, {
-				cwd: projectDir,
-				agentDir,
-			});
+			_test.registerMcpAliases(pi as unknown as ExtensionAPI, { cwd: projectDir, agentDir });
 
-			const withAlias = _test.transformPayload(
-				{
-					tools: [{ name: "subagent" }, { name: "mcp__subagent__run" }],
-					tool_choice: { type: "tool", name: "subagent" },
-					messages: [{ role: "assistant", content: [{ type: "tool_use", name: "subagent" }] }],
-				},
-				false,
-			);
-			expect(withAlias.tool_choice).toEqual({ type: "tool", name: "mcp__subagent__run" });
-			expect((withAlias.messages as Array<{ content: Array<{ name: string }> }>)[0]?.content[0]?.name).toBe(
-				"mcp__subagent__run",
-			);
-
-			writeFileSync(projectConfigPath, JSON.stringify({ toolAliases: [] }));
-			await _test.registerMcpAliases(pi as unknown as ExtensionAPI, {
-				cwd: projectDir,
-				agentDir,
-			});
-
-			const withoutAlias = _test.transformPayload(
-				{
-					tools: [{ name: "subagent" }, { name: "mcp__subagent__run" }],
-					tool_choice: { type: "tool", name: "subagent" },
-					messages: [{ role: "assistant", content: [{ type: "tool_use", name: "subagent" }] }],
-				},
-				false,
-			);
-			expect(withoutAlias.tool_choice).toBeUndefined();
-			expect((withoutAlias.messages as Array<{ content: Array<{ name: string }> }>)[0]?.content[0]?.name).toBe(
-				"subagent",
-			);
-
-			_test.registeredMcpAliases.add("mcp__subagent__run");
-			pi.getActiveTools.mockReturnValue(["subagent"]);
-			pi.getAllTools.mockReturnValue([mockTool("subagent"), mockTool("mcp__subagent__run")]);
-			_test.syncAliasActivation(pi as unknown as ExtensionAPI, true);
-			expect(pi.setActiveTools).not.toHaveBeenCalled();
+			expect(pi.registerTool).toHaveBeenCalledTimes(1);
+			expect(pi.registerTool).toHaveBeenCalledWith(expect.objectContaining({ name: "mcp__exa__web_search" }));
+			expect(_test.FLAT_TO_MCP.get("web_search_exa")).toBe("mcp__exa__web_search");
 		});
 
-		it("registers an MCP alias for a user-configured flat tool using its sourceInfo path", async () => {
+		it("ignores user aliases that are not mcp__-prefixed", () => {
+			const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+			try {
+				writeFileSync(projectConfigPath, JSON.stringify({ toolAliases: [["subagent", "not_an_mcp_name"]] }));
+
+				const pi = createMockPi();
+				pi.getAllTools.mockReturnValue([mockTool("subagent")]);
+
+				_test.registerMcpAliases(pi as unknown as ExtensionAPI, { cwd: projectDir, agentDir });
+
+				expect(pi.registerTool).not.toHaveBeenCalledWith(expect.objectContaining({ name: "not_an_mcp_name" }));
+				expect(warn).toHaveBeenCalledWith(expect.stringContaining('alias must start with "mcp__"'));
+			} finally {
+				warn.mockRestore();
+			}
+		});
+
+		it("keeps user alias mappings for flat tools that are not in the registry", () => {
 			writeFileSync(projectConfigPath, JSON.stringify({ toolAliases: [["subagent", "mcp__subagent__run"]] }));
 
-			const extDir = join(projectDir, "my-subagent-ext");
-			mkdirSync(extDir, { recursive: true });
-			writeFileSync(
-				join(extDir, "index.js"),
-				[
-					'import { Type } from "typebox";',
-					"const schema = Type.Object({ task: Type.String() });",
-					"export default function subagentExt(pi) {",
-					"  pi.registerTool({",
-					'    name: "subagent",',
-					"    description: 'User-configured subagent tool',",
-					"    inputSchema: schema,",
-					"    async execute() { return { content: [{ type: 'text', text: 'ok' }] }; }",
-					"  });",
-					"}",
-				].join("\n"),
-			);
+			const pi = createMockPi();
+			pi.getAllTools.mockReturnValue([]);
+
+			_test.registerMcpAliases(pi as unknown as ExtensionAPI, { cwd: projectDir, agentDir });
+
+			// Nothing to register (no schema available) but the payload mapping applies.
+			expect(pi.registerTool).not.toHaveBeenCalled();
+			expect(_test.FLAT_TO_MCP.get("subagent")).toBe("mcp__subagent__run");
+		});
+
+		it("removes stale user aliases when project config changes", () => {
+			vi.stubEnv("PI_CLAUDE_CODE_USE_DISABLE_AUTO_ALIAS", "1");
+			try {
+				const pi = createMockPi();
+
+				writeFileSync(projectConfigPath, JSON.stringify({ toolAliases: [["subagent", "mcp__subagent__run"]] }));
+				_test.registerMcpAliases(pi as unknown as ExtensionAPI, { cwd: projectDir, agentDir });
+
+				const withAlias = _test.transformPayload(
+					{
+						tools: [{ name: "subagent" }, { name: "mcp__subagent__run" }],
+						tool_choice: { type: "tool", name: "subagent" },
+						messages: [{ role: "assistant", content: [{ type: "tool_use", name: "subagent" }] }],
+					},
+					false,
+				);
+				expect(withAlias.tool_choice).toEqual({ type: "tool", name: "mcp__subagent__run" });
+				expect((withAlias.messages as Array<{ content: Array<{ name: string }> }>)[0]?.content[0]?.name).toBe(
+					"mcp__subagent__run",
+				);
+
+				writeFileSync(projectConfigPath, JSON.stringify({ toolAliases: [] }));
+				_test.registerMcpAliases(pi as unknown as ExtensionAPI, { cwd: projectDir, agentDir });
+
+				const withoutAlias = _test.transformPayload(
+					{
+						tools: [{ name: "subagent" }, { name: "mcp__subagent__run" }],
+						tool_choice: { type: "tool", name: "subagent" },
+						messages: [{ role: "assistant", content: [{ type: "tool_use", name: "subagent" }] }],
+					},
+					false,
+				);
+				expect(withoutAlias.tool_choice).toBeUndefined();
+				expect((withoutAlias.messages as Array<{ content: Array<{ name: string }> }>)[0]?.content[0]?.name).toBe(
+					"subagent",
+				);
+
+				_test.registeredMcpAliases.add("mcp__subagent__run");
+				pi.getActiveTools.mockReturnValue(["subagent"]);
+				pi.getAllTools.mockReturnValue([mockTool("subagent"), mockTool("mcp__subagent__run")]);
+				_test.syncAliasActivation(pi as unknown as ExtensionAPI, true);
+				expect(pi.setActiveTools).not.toHaveBeenCalled();
+			} finally {
+				vi.unstubAllEnvs();
+			}
+		});
+
+		it("registers a schema-backed alias for a user-configured flat tool", () => {
+			writeFileSync(projectConfigPath, JSON.stringify({ toolAliases: [["subagent", "mcp__subagent__run"]] }));
 
 			const pi = createMockPi();
-			pi.getAllTools.mockReturnValue([mockTool("subagent", { baseDir: extDir, path: join(extDir, "index.js") })]);
+			pi.getAllTools.mockReturnValue([
+				mockTool("subagent", { path: "/x/my-subagent-ext/index.js", description: "User-configured subagent tool" }),
+			]);
 
 			try {
-				await _test.registerMcpAliases(pi as unknown as ExtensionAPI, {
-					cwd: projectDir,
-					agentDir,
-				});
-				expect(pi.registerTool).toHaveBeenCalledWith(expect.objectContaining({ name: "mcp__subagent__run" }));
+				_test.registerMcpAliases(pi as unknown as ExtensionAPI, { cwd: projectDir, agentDir });
+				expect(pi.registerTool).toHaveBeenCalledWith(
+					expect.objectContaining({ name: "mcp__subagent__run", description: "User-configured subagent tool" }),
+				);
 				expect(_test.FLAT_TO_MCP.get("subagent")).toBe("mcp__subagent__run");
 			} finally {
 				_test.FLAT_TO_MCP.delete("subagent");
@@ -1225,10 +1311,31 @@ describe("pi-claude-code-use", () => {
 			expect(result.message.content[0].name).toBe("run_chain");
 		});
 
-		it("leaves foreign mcp__ toolCalls untouched when registeredMcpAliases is empty", () => {
-			// refreshAliasMap re-seeds builtins (including mcp__exa__web_search → web_search_exa)
-			// but registeredMcpAliases is cleared by the top-level beforeEach and not populated here.
-			_test.refreshAliasMap([]);
+		it("rewrites derived alias toolCalls back to the flat source name", () => {
+			const pi = createMockPi();
+			const tempDir = mkdtempSync(join(tmpdir(), "pi-claude-code-use-"));
+			try {
+				pi.getAllTools.mockReturnValue([
+					mockTool("web_search_exa", { path: "/x/node_modules/@benvargas/pi-exa-mcp/extensions/index.ts" }),
+				]);
+				registerAliasesIsolated(pi, tempDir);
+
+				const msg = {
+					role: "assistant",
+					content: [{ type: "toolCall", id: "y", name: "mcp__exa_mcp__web_search_exa", arguments: {} }],
+				};
+
+				const out = _test.unaliasToolCalls(msg) as typeof msg | undefined;
+				expect(out).toBeDefined();
+				expect((out?.content[0] as { name: string }).name).toBe("web_search_exa");
+			} finally {
+				rmSync(tempDir, { recursive: true, force: true });
+			}
+		});
+
+		it("leaves foreign mcp__ toolCalls untouched when not registered by this extension", () => {
+			_test.refreshAliasMap([["web_search_exa", "mcp__exa__web_search"]]);
+			// Mapping exists but the alias was NOT registered by this extension.
 
 			const msg = {
 				role: "assistant",
@@ -1238,23 +1345,12 @@ describe("pi-claude-code-use", () => {
 			expect(_test.unaliasToolCalls(msg)).toBeUndefined();
 		});
 
-		it("rewrites mcp__exa__web_search → web_search_exa when registered by this extension", () => {
-			_test.refreshAliasMap([]);
-			_test.registeredMcpAliases.add("mcp__exa__web_search");
-
-			const msg = {
-				role: "assistant",
-				content: [{ type: "toolCall", id: "y", name: "mcp__exa__web_search", arguments: {} }],
-			};
-
-			const out = _test.unaliasToolCalls(msg) as typeof msg | undefined;
-			expect(out).toBeDefined();
-			expect((out?.content[0] as { name: string }).name).toBe("web_search_exa");
-		});
-
 		it("in a mixed message, only registered aliases are rewritten; foreign mcp__ names are preserved", () => {
-			_test.refreshAliasMap([["run_chain", "mcp__chain__run_chain"]]);
-			// Register only the user-defined alias; the builtin exa alias is NOT registered.
+			_test.refreshAliasMap([
+				["run_chain", "mcp__chain__run_chain"],
+				["web_search_exa", "mcp__exa__web_search"],
+			]);
+			// Register only the first alias; the exa alias is NOT registered.
 			_test.registeredMcpAliases.add("mcp__chain__run_chain");
 
 			const msg = {
@@ -1269,21 +1365,6 @@ describe("pi-claude-code-use", () => {
 			expect(out).toBeDefined();
 			expect((out?.content[0] as { name: string }).name).toBe("run_chain");
 			expect((out?.content[1] as { name: string }).name).toBe("mcp__exa__web_search");
-		});
-
-		it("leaves user-defined mcp__ toolCalls untouched when not registered by this extension", () => {
-			// Seed MCP_TO_FLAT with a user alias entry, but do NOT add it to
-			// registeredMcpAliases. Simulates a model emitting an alias name that
-			// another extension actually owns — this extension must not rewrite it.
-			_test.refreshAliasMap([["my_custom_tool", "mcp__custom__do_thing"]]);
-			_test.registeredMcpAliases.clear();
-
-			const msg = {
-				role: "assistant",
-				content: [{ type: "toolCall", id: "1", name: "mcp__custom__do_thing", arguments: {} }],
-			};
-
-			expect(_test.unaliasToolCalls(msg)).toBeUndefined();
 		});
 
 		it("rewrites mixed-case mcp__ toolCall names (case-insensitive lookup)", () => {
