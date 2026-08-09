@@ -1,6 +1,7 @@
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { type ExtensionAPI, getAgentDir, type MarkdownTransformContext } from "@earendil-works/pi-coding-agent";
+import { type Component, Text } from "@earendil-works/pi-tui";
 
 // ============================================================================
 // Types
@@ -10,6 +11,36 @@ type ToolAliasPair = readonly [flatName: string, mcpName: string];
 
 type ToolRegistration = Parameters<ExtensionAPI["registerTool"]>[0];
 type ToolInfo = ReturnType<ExtensionAPI["getAllTools"]>[number];
+
+const MAX_COLLAPSED_RESULT_LINES = 3;
+const MAX_COLLAPSED_RESULT_CHARS = 2000;
+
+/** Keeps renderer-less alias results compact while preserving full output for expansion. */
+class CompactAliasResult implements Component {
+	private readonly content: Text;
+	private readonly hint: Text;
+	private readonly truncatedByChars: boolean;
+
+	constructor(text: string, expanded: boolean, truncatedByChars: boolean, hint: string) {
+		this.content = new Text(text, 0, 0);
+		this.hint = new Text(hint, 0, 0);
+		this.truncatedByChars = truncatedByChars;
+		this.expanded = expanded;
+	}
+
+	private readonly expanded: boolean;
+
+	render(width: number): string[] {
+		const lines = this.content.render(width);
+		if (this.expanded || (!this.truncatedByChars && lines.length <= MAX_COLLAPSED_RESULT_LINES)) return lines;
+		return [...lines.slice(0, MAX_COLLAPSED_RESULT_LINES), ...this.hint.render(width)];
+	}
+
+	invalidate(): void {
+		this.content.invalidate();
+		this.hint.invalidate();
+	}
+}
 
 // ============================================================================
 // Constants
@@ -730,6 +761,19 @@ function registerMcpAliases(pi: ExtensionAPI, opts: { cwd?: string; agentDir?: s
 			description: tool.description,
 			parameters: tool.parameters,
 			...(tool.promptGuidelines ? { promptGuidelines: tool.promptGuidelines } : {}),
+			renderResult(result, { expanded, isPartial }, theme) {
+				if (isPartial) return new Text(theme.fg("warning", `Running ${tool.name}…`), 0, 0);
+				const output =
+					result.content.map((part) => (part.type === "text" ? part.text : `[image: ${part.mimeType}]`)).join("\n") ||
+					"(empty result)";
+				const displayed = expanded ? output : output.slice(0, MAX_COLLAPSED_RESULT_CHARS);
+				return new CompactAliasResult(
+					theme.fg("toolOutput", displayed),
+					expanded,
+					displayed.length < output.length,
+					theme.fg("muted", "… (Ctrl+O to expand)"),
+				);
+			},
 			async execute() {
 				// Managed alias calls are rewritten back to the flat tool name at
 				// message_end before Pi resolves execution, so this stub only runs

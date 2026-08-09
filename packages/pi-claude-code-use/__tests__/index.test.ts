@@ -691,6 +691,24 @@ describe("pi-claude-code-use", () => {
 			expect(_test.registeredMcpAliases.has("mcp__exa_mcp__web_search_exa")).toBe(true);
 		});
 
+		it("keeps generated alias results collapsed until expanded", () => {
+			const pi = createMockPi();
+			pi.getAllTools.mockReturnValue([mockTool("mcp", { path: "/x/node_modules/pi-mcp-adapter/index.ts" })]);
+			registerAliasesIsolated(pi, tempDir);
+
+			const definition = pi.registerTool.mock.calls[0]?.[0] as Parameters<ExtensionAPI["registerTool"]>[0];
+			const result = {
+				content: [{ type: "text" as const, text: "one\ntwo\nthree\nfour\nfive" }],
+				details: {},
+			};
+			const theme = { fg: (_color: string, text: string) => text } as never;
+			const collapsed = definition.renderResult?.(result, { expanded: false, isPartial: false }, theme, {} as never);
+			const expanded = definition.renderResult?.(result, { expanded: true, isPartial: false }, theme, {} as never);
+
+			expect(collapsed?.render(80)).toHaveLength(4);
+			expect(expanded?.render(80)).toHaveLength(5);
+		});
+
 		it("does not alias core tools or mcp__-prefixed tools", () => {
 			const pi = createMockPi();
 			pi.getAllTools.mockReturnValue([mockTool("read"), mockTool("Bash"), mockTool("mcp__real__server_tool")]);

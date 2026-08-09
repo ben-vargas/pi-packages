@@ -25,7 +25,8 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": ">=0.77.0"
+    "@earendil-works/pi-coding-agent": ">=0.77.0",
+    "@earendil-works/pi-tui": "*"
   },
   "repository": {
     "type": "git",
