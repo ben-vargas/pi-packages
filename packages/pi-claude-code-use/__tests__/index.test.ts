@@ -1,9 +1,21 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type { ExtensionAPI, MarkdownTransformContext } from "@earendil-works/pi-coding-agent";
+import { type ExtensionAPI, keyHint, type MarkdownTransformContext } from "@earendil-works/pi-coding-agent";
+import { resetCapabilitiesCache, setCapabilities } from "@earendil-works/pi-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import piClaudeCodeUse, { _test } from "../extensions/index.js";
+
+// Wrap keyHint in a spy that delegates to the real implementation. Outside
+// pi's interactive TUI the real keyHint throws (uninitialized theme), which
+// is exactly the fallback path most rendering tests exercise; individual
+// tests override the return value to cover the resolved-binding path, since
+// the real binding state lives in pi-coding-agent's own pi-tui instance and
+// cannot be configured from here.
+vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@earendil-works/pi-coding-agent")>();
+	return { ...actual, keyHint: vi.fn(actual.keyHint) };
+});
 
 // ============================================================================
 // Test helpers
@@ -691,22 +703,187 @@ describe("pi-claude-code-use", () => {
 			expect(_test.registeredMcpAliases.has("mcp__exa_mcp__web_search_exa")).toBe(true);
 		});
 
-		it("keeps generated alias results collapsed until expanded", () => {
-			const pi = createMockPi();
-			pi.getAllTools.mockReturnValue([mockTool("mcp", { path: "/x/node_modules/pi-mcp-adapter/index.ts" })]);
-			registerAliasesIsolated(pi, tempDir);
+		describe("alias result rendering", () => {
+			// The renderer consults pi-tui's global terminal capability cache for
+			// image support; restore it after every test. keyHint call/override
+			// state is likewise reset so tests stay isolated.
+			afterEach(() => {
+				resetCapabilitiesCache();
+				vi.mocked(keyHint).mockClear();
+			});
 
-			const definition = pi.registerTool.mock.calls[0]?.[0] as Parameters<ExtensionAPI["registerTool"]>[0];
-			const result = {
-				content: [{ type: "text" as const, text: "one\ntwo\nthree\nfour\nfive" }],
-				details: {},
-			};
+			// Identity theme keeps assertions exact. keyHint() needs Pi's interactive
+			// theme (uninitialized here), so the renderer's fallback hint path runs
+			// and composes "… (ctrl+o to expand)" from this theme deterministically.
 			const theme = { fg: (_color: string, text: string) => text } as never;
-			const collapsed = definition.renderResult?.(result, { expanded: false, isPartial: false }, theme, {} as never);
-			const expanded = definition.renderResult?.(result, { expanded: true, isPartial: false }, theme, {} as never);
+			const HINT = "… (ctrl+o to expand)";
 
-			expect(collapsed?.render(80)).toHaveLength(4);
-			expect(expanded?.render(80)).toHaveLength(5);
+			type ResultPart = { type: "text"; text: string } | { type: "image"; data: string; mimeType: string };
+
+			function aliasDefinition() {
+				const pi = createMockPi();
+				pi.getAllTools.mockReturnValue([mockTool("mcp", { path: "/x/node_modules/pi-mcp-adapter/index.ts" })]);
+				registerAliasesIsolated(pi, tempDir);
+				return pi.registerTool.mock.calls[0]?.[0] as Parameters<ExtensionAPI["registerTool"]>[0];
+			}
+
+			/** Render an alias result and return trimmed lines (Text pads lines to the render width). */
+			function renderLines(
+				content: ResultPart[],
+				opts: { expanded?: boolean; isPartial?: boolean; showImages?: boolean; width?: number } = {},
+			): string[] {
+				const definition = aliasDefinition();
+				const component = definition.renderResult?.(
+					{ content, details: {} } as never,
+					{ expanded: opts.expanded ?? false, isPartial: opts.isPartial ?? false },
+					theme,
+					{ showImages: opts.showImages ?? true } as never,
+				);
+				expect(component).toBeDefined();
+				return (component?.render(opts.width ?? 80) ?? []).map((line) => line.trimEnd());
+			}
+
+			const text = (value: string): ResultPart[] => [{ type: "text", text: value }];
+			const png = (): ResultPart => ({ type: "image", data: "aGVsbG8=", mimeType: "image/png" });
+
+			it("renders short results exactly, without an expansion hint", () => {
+				expect(renderLines(text("one\ntwo"))).toEqual(["one", "two"]);
+				expect(renderLines(text("one\ntwo"), { expanded: true })).toEqual(["one", "two"]);
+			});
+
+			it("collapses long results to three lines with a keybinding-aware expansion hint", () => {
+				const content = text("one\ntwo\nthree\nfour\nfive");
+				expect(renderLines(content)).toEqual(["one", "two", "three", HINT]);
+				expect(renderLines(content, { expanded: true })).toEqual(["one", "two", "three", "four", "five"]);
+			});
+
+			it("renders the user's configured app.tools.expand binding when keyHint resolves", () => {
+				// Simulate an initialized TUI where the user rebound app.tools.expand
+				// to ctrl+e: keyHint resolves the configured key, not the default.
+				vi.mocked(keyHint).mockReturnValueOnce("ctrl+e to expand");
+				const lines = renderLines(text("one\ntwo\nthree\nfour\nfive"));
+				expect(keyHint).toHaveBeenCalledWith("app.tools.expand", "to expand");
+				expect(lines).toEqual(["one", "two", "three", "… (ctrl+e to expand)"]);
+				expect(lines[3]).not.toContain("ctrl+o");
+			});
+
+			it("falls back to keyText/default composition only after keyHint throws outside the TUI", () => {
+				const lines = renderLines(text("one\ntwo\nthree\nfour\nfive"));
+				// The configured-binding path is consulted first; the uninitialized
+				// interactive theme makes the real keyHint throw, and the hint is then
+				// composed from keyText (empty here) and the "ctrl+o" default.
+				expect(keyHint).toHaveBeenCalledWith("app.tools.expand", "to expand");
+				expect(vi.mocked(keyHint).mock.results[0]?.type).toBe("throw");
+				expect(lines).toEqual(["one", "two", "three", HINT]);
+			});
+
+			it("counts wrapped visual lines against the collapse limit", () => {
+				// 20 five-char words wrap to 4 visual lines at width 30 (5 words per line).
+				const content = text("word ".repeat(20).trim());
+				const expanded = renderLines(content, { expanded: true, width: 30 });
+				expect(expanded).toHaveLength(4);
+				const collapsed = renderLines(content, { width: 30 });
+				expect(collapsed).toEqual([...expanded.slice(0, 3), HINT]);
+			});
+
+			it("truncates collapsed output beyond 2000 characters and expands to the full text", () => {
+				const content = text("x".repeat(2500));
+				// Wide enough that the truncated text fits on one visual line.
+				expect(renderLines(content, { width: 4000 })).toEqual(["x".repeat(2000), HINT]);
+				expect(renderLines(content, { expanded: true, width: 4000 })).toEqual(["x".repeat(2500)]);
+				// Narrow terminals additionally collapse by visual lines.
+				expect(renderLines(content, { width: 100 })).toHaveLength(4);
+			});
+
+			it("does not split surrogate pairs at the truncation boundary", () => {
+				const { text: truncated, truncated: didTruncate } = _test.truncateCodePoints(`${"a".repeat(1999)}😀😀😀`, 2000);
+				expect(didTruncate).toBe(true);
+				// 2000 code points: 1999 ASCII chars plus one complete emoji (2 UTF-16 units).
+				expect(truncated).toBe(`${"a".repeat(1999)}😀`);
+				expect(renderLines(text(`${"a".repeat(1999)}😀😀😀`), { width: 4000 })).toEqual([
+					`${"a".repeat(1999)}😀`,
+					HINT,
+				]);
+			});
+
+			it("strips ESC-form ANSI CSI/OSC sequences, C0 controls, and carriage returns", () => {
+				expect(_test.sanitizeResultText("\u001b[31mred\u001b[0m \u001b]0;title\u0007mid\u0000dle\rend\ttail")).toBe(
+					"red middleend\ttail",
+				);
+				// Lone surrogates are dropped; paired ones survive.
+				expect(_test.sanitizeResultText("a\ud800b\ud83d\ude00")).toBe("ab\ud83d\ude00");
+				// Rendered output is normalized before styling/truncation (tabs become spaces in the TUI).
+				expect(renderLines(text("\u001b[31mred\u001b[0m line\r\nnext"))).toEqual(["red line", "next"]);
+			});
+
+			it("strips C1-form OSC sequences terminated by BEL or ST", () => {
+				expect(_test.sanitizeResultText("before\u009d0;bel-title\u0007after")).toBe("beforeafter");
+				expect(_test.sanitizeResultText("before\u009d0;st-title\u009cafter")).toBe("beforeafter");
+				// C1 CSI remains supported, and the registered renderer uses the same hardened path.
+				expect(_test.sanitizeResultText("\u009b31mred\u009b0m")).toBe("red");
+				expect(renderLines(text("\u009d0;title\u009cvisible\u0085text"))).toEqual(["visibletext"]);
+			});
+
+			it("drops standalone C1 controls and malformed C1 introducers while preserving tab and LF", () => {
+				const everyC1Control = String.fromCodePoint(...Array.from({ length: 0x20 }, (_, i) => 0x80 + i));
+				expect(_test.sanitizeResultText(`left${everyC1Control}right`)).toBe("leftright");
+				expect(_test.sanitizeResultText("a\u009dunterminated")).toBe("aunterminated");
+				expect(_test.sanitizeResultText("a\u009b/unterminated")).toBe("a/unterminated");
+				expect(_test.sanitizeResultText("tab\tline\nnext")).toBe("tab\tline\nnext");
+			});
+
+			it("leaves inline images to the tool row when the terminal shows them", () => {
+				setCapabilities({ images: "kitty", trueColor: true, hyperlinks: false });
+				// Image-only inline result: no textual placeholder and no "(empty result)".
+				expect(renderLines([png()])).toEqual([]);
+				expect(renderLines([text("hello")[0] as ResultPart, png()])).toEqual(["hello"]);
+			});
+
+			it("renders an image fallback when images are hidden or unsupported", () => {
+				setCapabilities({ images: "kitty", trueColor: true, hyperlinks: false });
+				expect(renderLines([png()], { showImages: false })).toEqual(["[Image: [image/png]]"]);
+				expect(renderLines([text("hi")[0] as ResultPart, png()], { showImages: false })).toEqual([
+					"hi",
+					"[Image: [image/png]]",
+				]);
+
+				setCapabilities({ images: null, trueColor: false, hyperlinks: false });
+				expect(renderLines([png()])).toEqual(["[Image: [image/png]]"]);
+			});
+
+			it("sanitizes hostile ESC sequences and controls in hidden-image MIME fallbacks", () => {
+				setCapabilities({ images: "kitty", trueColor: true, hyperlinks: false });
+				const hostileMime = "image/\u001b[31mred\u001b[0m-\u001b]0;PWNED\u0007png\u0000\u0008\u000b\u001f\u007f\r";
+				const output = renderLines([{ type: "image", data: "", mimeType: hostileMime }], {
+					showImages: false,
+				}).join("\n");
+
+				expect(output).toBe("[Image: [image/red-png]]");
+				expect(output).not.toContain("PWNED");
+				expect(_test.sanitizeResultText(output)).toBe(output);
+			});
+
+			it("sanitizes hostile C1 sequences and controls in unsupported-image MIME fallbacks", () => {
+				setCapabilities({ images: null, trueColor: false, hyperlinks: false });
+				const hostileMime = "image/\u009b31mred\u009b0m-\u009d0;PWNED\u009cpng\u0080\u0085\u008f\u009f\u007f\r";
+				const output = renderLines([{ type: "image", data: "", mimeType: hostileMime }]).join("\n");
+
+				expect(output).toBe("[Image: [image/red-png]]");
+				expect(output).not.toContain("PWNED");
+				expect(_test.sanitizeResultText(output)).toBe(output);
+			});
+
+			it("streams partial results through the same compact renderer", () => {
+				expect(renderLines(text("partial chunk"), { isPartial: true })).toEqual(["partial chunk"]);
+				// An empty partial result is still streaming — render nothing, not "(empty result)".
+				expect(renderLines([], { isPartial: true })).toEqual([]);
+				expect(renderLines(text(""), { isPartial: true })).toEqual([]);
+			});
+
+			it("marks genuinely empty final results", () => {
+				expect(renderLines([])).toEqual(["(empty result)"]);
+				expect(renderLines(text(""))).toEqual(["(empty result)"]);
+			});
 		});
 
 		it("does not alias core tools or mcp__-prefixed tools", () => {

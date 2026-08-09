@@ -1,7 +1,14 @@
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { type ExtensionAPI, getAgentDir, type MarkdownTransformContext } from "@earendil-works/pi-coding-agent";
-import { type Component, Text } from "@earendil-works/pi-tui";
+import {
+	type ExtensionAPI,
+	getAgentDir,
+	keyHint,
+	keyText,
+	type MarkdownTransformContext,
+	type Theme,
+} from "@earendil-works/pi-coding-agent";
+import { type Component, getCapabilities, getImageDimensions, imageFallback, Text } from "@earendil-works/pi-tui";
 
 // ============================================================================
 // Types
@@ -12,23 +19,104 @@ type ToolAliasPair = readonly [flatName: string, mcpName: string];
 type ToolRegistration = Parameters<ExtensionAPI["registerTool"]>[0];
 type ToolInfo = ReturnType<ExtensionAPI["getAllTools"]>[number];
 
+// ============================================================================
+// Compact alias result rendering
+//
+// getAllTools() does not expose source tool renderers, so live alias rows
+// (rendered under the mcp__ name before the message_end rewrite) use this
+// compact generic result renderer. It mirrors Pi's default result rendering
+// pipeline: terminal-safe output normalization, image handling that matches
+// ToolExecutionComponent's inline-image behavior, and a keybinding-aware
+// expansion hint. Restored sessions persist the flat tool name, so resumed
+// transcripts render with the source tool's own renderers instead.
+// ============================================================================
+
 const MAX_COLLAPSED_RESULT_LINES = 3;
 const MAX_COLLAPSED_RESULT_CHARS = 2000;
+
+// Matches ANSI CSI and OSC escape sequences (string terminator: BEL, ESC\, or
+// 0x9c). Based on Pi core's vendored ansi-regex (MIT, Sindre Sorhus), extended
+// to recognize the 8-bit C1 OSC introducer (0x9d) as well as ESC ]. Pi does not
+// export its sanitizers publicly, so this is kept local instead of deep-importing
+// private dist modules.
+const TERMINAL_SEQUENCE_PATTERN = new RegExp(
+	"(?:(?:\\u001B\\]|\\u009D)[\\s\\S]*?(?:\\u0007|\\u001B\\u005C|\\u009C))" +
+		"|[\\u001B\\u009B][[\\]()#;?]*(?:\\d{1,4}(?:[;:]\\d{0,4})*)?[\\dA-PR-TZcf-nq-uy=><~]",
+	"g",
+);
+
+/**
+ * Terminal-safe normalization for displayed tool result text. This follows
+ * `getTextOutput` in Pi core's render-utils, then hardens its normalization by
+ * recognizing C1-form OSC and removing every remaining C1 control. Tabs,
+ * newlines, and valid printable Unicode are preserved.
+ */
+function sanitizeResultText(text: string): string {
+	const stripped =
+		text.includes("\u001b") || text.includes("\u009b") || text.includes("\u009d")
+			? text.replace(TERMINAL_SEQUENCE_PATTERN, "")
+			: text;
+	let result = "";
+	for (const char of stripped) {
+		const code = char.codePointAt(0);
+		if (code === undefined) continue;
+		if (code === 0x09 || code === 0x0a) {
+			result += char; // Keep tabs and newlines.
+			continue;
+		}
+		// Drop C0 (including \r), DEL, and all 8-bit C1 controls. Sequence
+		// introducers left behind by malformed/unterminated input are safe too.
+		if (code <= 0x1f || (code >= 0x7f && code <= 0x9f)) continue;
+		if (code >= 0xd800 && code <= 0xdfff) continue; // Lone surrogates (paired ones yield code points > 0xffff).
+		if (code >= 0xfff9 && code <= 0xfffb) continue; // Unicode interlinear format characters.
+		result += char;
+	}
+	return result;
+}
+
+/** Truncate to a maximum number of Unicode code points without splitting surrogate pairs. */
+function truncateCodePoints(text: string, maxCodePoints: number): { text: string; truncated: boolean } {
+	// A string's UTF-16 length is always >= its code point count.
+	if (text.length <= maxCodePoints) return { text, truncated: false };
+	let end = 0;
+	let count = 0;
+	for (const char of text) {
+		if (count === maxCodePoints) return { text: text.slice(0, end), truncated: true };
+		count += 1;
+		end += char.length;
+	}
+	return { text, truncated: false };
+}
+
+/**
+ * Keybinding-aware "… (ctrl+o to expand)" hint. `keyHint` resolves the user's
+ * configured binding but requires Pi's interactive theme to be initialized;
+ * outside the TUI (tests, non-interactive modes) fall back to composing the
+ * hint from the render theme that Pi passed in.
+ */
+function collapsedExpansionHint(theme: Theme): string {
+	let hint: string;
+	try {
+		hint = keyHint("app.tools.expand", "to expand");
+	} catch {
+		hint = theme.fg("dim", keyText("app.tools.expand") || "ctrl+o") + theme.fg("muted", " to expand");
+	}
+	return `${theme.fg("muted", "… (")}${hint}${theme.fg("muted", ")")}`;
+}
 
 /** Keeps renderer-less alias results compact while preserving full output for expansion. */
 class CompactAliasResult implements Component {
 	private readonly content: Text;
 	private readonly hint: Text;
+	private readonly expanded: boolean;
 	private readonly truncatedByChars: boolean;
 
-	constructor(text: string, expanded: boolean, truncatedByChars: boolean, hint: string) {
+	constructor(text: string, hint: string, expanded: boolean, truncatedByChars: boolean) {
 		this.content = new Text(text, 0, 0);
 		this.hint = new Text(hint, 0, 0);
-		this.truncatedByChars = truncatedByChars;
 		this.expanded = expanded;
+		this.truncatedByChars = truncatedByChars;
 	}
-
-	private readonly expanded: boolean;
 
 	render(width: number): string[] {
 		const lines = this.content.render(width);
@@ -40,6 +128,61 @@ class CompactAliasResult implements Component {
 		this.content.invalidate();
 		this.hint.invalidate();
 	}
+}
+
+type AliasResultPart = { type: string; text?: string; data?: string; mimeType?: string };
+
+function renderCompactAliasResult(
+	content: readonly AliasResultPart[],
+	options: { expanded: boolean; isPartial: boolean },
+	theme: Theme,
+	showImages: boolean,
+): Component {
+	const textOutput = content
+		.filter((part) => part.type === "text")
+		.map((part) => sanitizeResultText(part.text ?? ""))
+		.join("\n");
+	const imageParts = content.filter((part) => part.type === "image");
+	// Pi's ToolExecutionComponent appends inline Image components below the tool
+	// row when the terminal supports them and images are shown. Emit a textual
+	// placeholder only when it will not (mirrors Pi core's getTextOutput). Like
+	// getTextOutput, this treats capability + showImages as "inline" even for
+	// parts missing data/mimeType or non-PNGs that kitty fails to convert —
+	// Pi core skips those inline images too, so such edge cases render nothing
+	// rather than a duplicate placeholder.
+	const imagesInline = imageParts.length > 0 && showImages && getCapabilities().images !== null;
+	let output = textOutput;
+	if (imageParts.length > 0 && !imagesInline) {
+		const indicators = imageParts
+			.map((part) => {
+				const mimeType = part.mimeType ?? "image/unknown";
+				const dimensions =
+					part.data && part.mimeType ? (getImageDimensions(part.data, part.mimeType) ?? undefined) : undefined;
+				return imageFallback(mimeType, dimensions);
+			})
+			.join("\n");
+		output = output ? `${output}\n${indicators}` : indicators;
+	}
+	// Normalize the fully assembled result, not just source text blocks:
+	// imageFallback interpolates untrusted MIME text into its placeholder.
+	output = sanitizeResultText(output);
+	if (!output) {
+		// Image-only inline results get their images from the tool row itself, and
+		// partial results may still stream text in — neither is an empty result.
+		if (imagesInline || options.isPartial) return new Text("", 0, 0);
+		return new Text(theme.fg("toolOutput", "(empty result)"), 0, 0);
+	}
+	// Partial (streaming) results render through the same compact path so output
+	// appears as it arrives, exactly like the finalized view.
+	const truncation = options.expanded
+		? { text: output, truncated: false }
+		: truncateCodePoints(output, MAX_COLLAPSED_RESULT_CHARS);
+	return new CompactAliasResult(
+		theme.fg("toolOutput", truncation.text),
+		collapsedExpansionHint(theme),
+		options.expanded,
+		truncation.truncated,
+	);
 }
 
 // ============================================================================
@@ -761,18 +904,8 @@ function registerMcpAliases(pi: ExtensionAPI, opts: { cwd?: string; agentDir?: s
 			description: tool.description,
 			parameters: tool.parameters,
 			...(tool.promptGuidelines ? { promptGuidelines: tool.promptGuidelines } : {}),
-			renderResult(result, { expanded, isPartial }, theme) {
-				if (isPartial) return new Text(theme.fg("warning", `Running ${tool.name}…`), 0, 0);
-				const output =
-					result.content.map((part) => (part.type === "text" ? part.text : `[image: ${part.mimeType}]`)).join("\n") ||
-					"(empty result)";
-				const displayed = expanded ? output : output.slice(0, MAX_COLLAPSED_RESULT_CHARS);
-				return new CompactAliasResult(
-					theme.fg("toolOutput", displayed),
-					expanded,
-					displayed.length < output.length,
-					theme.fg("muted", "… (Ctrl+O to expand)"),
-				);
+			renderResult(result, { expanded, isPartial }, theme, context) {
+				return renderCompactAliasResult(result.content, { expanded, isPartial }, theme, context.showImages);
 			},
 			async execute() {
 				// Managed alias calls are rewritten back to the flat tool name at
@@ -983,6 +1116,8 @@ export const _test = {
 	rewritePromptText,
 	rewriteSystemField,
 	sanitizeAliasSegment,
+	sanitizeResultText,
+	truncateCodePoints,
 	setLastManagedToolList: (v: string[] | undefined) => {
 		lastManagedToolList = v;
 	},
