@@ -18,6 +18,7 @@ Pi packages can include extensions, skills, prompt templates, and themes. See th
 | [@benvargas/pi-openai-fast](./packages/pi-openai-fast/) | Extension | `/fast` toggle for OpenAI priority service tier on supported GPT-5.4 models |
 | [@benvargas/pi-openai-verbosity](./packages/pi-openai-verbosity/) | Extension | Config-backed OpenAI Codex text verbosity rewrites |
 | [@benvargas/pi-claude-code-use](./packages/pi-claude-code-use/) | Extension | Anthropic/Claude OAuth compatibility patching |
+| [@benvargas/pi-model-sort](./packages/pi-model-sort/) | Extension | Last-usage sorting for the `/model` picker and scoped cycling; fresh starts on the most recently used model |
 
 Each package has its own README with setup instructions, usage, and configuration details.
 
@@ -61,6 +62,7 @@ pi install npm:@benvargas/pi-cut-stack
 pi install npm:@benvargas/pi-openai-fast
 pi install npm:@benvargas/pi-openai-verbosity
 pi install npm:@benvargas/pi-claude-code-use
+pi install npm:@benvargas/pi-model-sort
 ```
 
 </details>
@@ -93,6 +95,7 @@ pi remove npm:@benvargas/pi-cut-stack
 pi remove npm:@benvargas/pi-openai-fast
 pi remove npm:@benvargas/pi-openai-verbosity
 pi remove npm:@benvargas/pi-claude-code-use
+pi remove npm:@benvargas/pi-model-sort
 ```
 
 </details>

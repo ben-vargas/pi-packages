@@ -35,7 +35,8 @@
       "./packages/pi-cut-stack/extensions/index.ts",
       "./packages/pi-openai-fast/extensions/index.ts",
       "./packages/pi-openai-verbosity/extensions/index.ts",
-      "./packages/pi-claude-code-use/extensions/index.ts"
+      "./packages/pi-claude-code-use/extensions/index.ts",
+      "./packages/pi-model-sort/extensions/index.ts"
     ],
     "themes": [
       "./packages/pi-themes/themes"

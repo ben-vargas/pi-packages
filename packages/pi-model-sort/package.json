@@ -1,0 +1,44 @@
+{
+  "name": "@benvargas/pi-model-sort",
+  "version": "1.0.0",
+  "description": "Sort models in pi by last usage and start fresh sessions on the most recently used model",
+  "keywords": [
+    "pi",
+    "pi-package",
+    "pi-extension",
+    "pi-coding-agent",
+    "model",
+    "sort",
+    "mru",
+    "last-used",
+    "model-selector",
+    "thinking-level"
+  ],
+  "type": "module",
+  "files": [
+    "extensions/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "pi": {
+    "extensions": [
+      "./extensions/index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.84.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ben-vargas/pi-packages.git",
+    "directory": "packages/pi-model-sort"
+  },
+  "author": "Ben Vargas",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/ben-vargas/pi-packages/issues"
+  },
+  "homepage": "https://github.com/ben-vargas/pi-packages/tree/main/packages/pi-model-sort#readme"
+}
