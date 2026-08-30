@@ -74,29 +74,29 @@ pi --provider synthetic --model hf:moonshotai/Kimi-K3
 
 Models are fetched at startup from the [Synthetic models endpoint](https://dev.synthetic.new/docs/api/models). If the startup fetch fails, times out after three seconds, or returns no supported models, the provider falls back to the following hardcoded defaults:
 
-Prices are $ per million tokens, current as of 2026-07-28.
+Prices are $ per million tokens, current as of 2026-08-30.
 
 | Model | ID | Reasoning | Vision | Context | Max Output | In / Out / Cache |
 |-------|-----|-----------|--------|---------|------------|------------------|
-| **Synthetic Large Text** | `syn:large:text` | Yes | No | 524K | 65K | 1.00 / 3.00 / 0.16 |
+| **Synthetic Large Text** | `syn:large:text` | Yes | Yes | 524K | 65K | 0.15 / 0.50 / 0.04 |
 | **Synthetic Small Text** | `syn:small:text` | Yes | No | 196K | 65K | 0.10 / 0.50 / 0.02 |
 | **Synthetic Large Vision** | `syn:large:vision` | Yes | Yes | 524K | 65K | 3.00 / 15.00 / 0.45 |
-| **Synthetic Small Vision** | `syn:small:vision` | Yes | Yes | 262K | 65K | 0.45 / 3.60 / 0.09 |
+| **Synthetic Small Vision** | `syn:small:vision` | Yes | Yes | 262K | 65K | 0.45 / 2.20 / 0.09 |
+| **GLM 5.3 Flash** | `hf:zai-org/GLM-5.3-Flash` | Yes | Yes | 524K | 65K | 0.15 / 0.50 / 0.04 |
 | **GLM 5.2** | `hf:zai-org/GLM-5.2` | Yes | No | 524K | 65K | 1.00 / 3.00 / 0.16 |
 | **GPT OSS 120B** | `hf:openai/gpt-oss-120b` | Yes | No | 131K | 65K | 0.10 / 0.10 / 0.02 |
 | **Kimi K3** | `hf:moonshotai/Kimi-K3` | Yes | Yes | 524K | 65K | 3.00 / 15.00 / 0.45 |
-| **Qwen 3.6 27B** | `hf:Qwen/Qwen3.6-27B` | Yes | Yes | 262K | 65K | 0.45 / 3.60 / 0.09 |
-| **MiniMax M3** | `hf:MiniMaxAI/MiniMax-M3` | Yes | Yes | 262K | 65K | 0.60 / 1.20 / 0.12 |
+| **Qwen 3.8 27B** | `hf:Qwen/Qwen3.8-27B` | Yes | Yes | 262K | 65K | 0.45 / 2.20 / 0.09 |
 | **GLM 4.7 Flash** | `hf:zai-org/GLM-4.7-Flash` | Yes | No | 196K | 65K | 0.10 / 0.50 / 0.02 |
 | **Nemotron 3 Super 120B** | `hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4` | Yes | No | 262K | 65K | 0.30 / 1.00 / 0.06 |
 
-The `syn:*` ids are permalinks that Synthetic re-points as models rotate, so configs using them survive model retirements — `syn:large:vision` moved from Kimi K2.7-Code to Kimi K3 in this release. The `hf:*` ids pin a specific model and break when it is retired.
+The `syn:*` ids are permalinks that Synthetic re-points as models rotate, so configs using them survive model retirements — `syn:large:text` moved from GLM 5.2 to the vision-capable GLM 5.3-Flash, and `syn:small:vision` from Qwen 3.6 to Qwen 3.8. The `hf:*` ids pin a specific model and break when it is retired.
 
 ### Thinking levels
 
 During live discovery, the extension derives each model's exact pi thinking levels from the catalog's `reasoning_parameters.efforts`. Unsupported levels are hidden instead of being mapped onto values the route does not advertise. This works for pinned `hf:*` ids and for `syn:*` permalinks, so a permalink automatically follows its current target's effort controls when Synthetic re-points it.
 
-Kimi K3 advertises `low`, `high`, and `max`. It always reasons, so `off` is unavailable; pi sends those three values unchanged as top-level `reasoning_effort`. `/synthetic-models` shows the advertised values in the selected model details.
+Kimi K3 and GLM 5.3-Flash advertise `low`, `high`, and `max`. They always reason, so `off` is unavailable; pi sends those values unchanged as top-level `reasoning_effort`. Qwen 3.8-27B similarly has no `none` and tops out at `xhigh`. `/synthetic-models` shows the advertised values in the selected model details.
 
 If the catalog request fails, pinned fallback models use hardcoded snapshots of their last advertised effort lists. Offline permalinks deliberately emit no `reasoning_effort`: without a live row there is no trustworthy way to know what an alias currently targets. Pi still displays its generic `off` through `high` levels for those fallback aliases because they declare `reasoning: true`, but the selections have no effect on the request.
 

@@ -3,9 +3,9 @@ import type { ExtensionAPI, ProviderModelConfig } from "@earendil-works/pi-codin
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import syntheticProvider, { getFallbackModels } from "../extensions/index.js";
 
+const GLM_5_3_FLASH_MODEL_ID = "hf:zai-org/GLM-5.3-Flash";
 const GLM_5_2_MODEL_ID = "hf:zai-org/GLM-5.2";
 const KIMI_K3_MODEL_ID = "hf:moonshotai/Kimi-K3";
-const MINIMAX_M3_MODEL_ID = "hf:MiniMaxAI/MiniMax-M3";
 const NONE_LOW_MEDIUM_HIGH_MAP = {
 	off: "none",
 	minimal: null,
@@ -15,7 +15,17 @@ const NONE_LOW_MEDIUM_HIGH_MAP = {
 	xhigh: null,
 	max: null,
 } as const;
+const LOW_HIGH_MAX_MAP = {
+	off: null,
+	minimal: null,
+	low: "low",
+	medium: null,
+	high: "high",
+	xhigh: null,
+	max: "max",
+} as const;
 const REASONING_MODEL_MAPS = {
+	[GLM_5_3_FLASH_MODEL_ID]: LOW_HIGH_MAX_MAP,
 	[GLM_5_2_MODEL_ID]: {
 		off: "none",
 		minimal: null,
@@ -27,34 +37,25 @@ const REASONING_MODEL_MAPS = {
 	},
 	"hf:zai-org/GLM-4.7-Flash": NONE_LOW_MEDIUM_HIGH_MAP,
 	"hf:openai/gpt-oss-120b": NONE_LOW_MEDIUM_HIGH_MAP,
-	[KIMI_K3_MODEL_ID]: {
+	[KIMI_K3_MODEL_ID]: LOW_HIGH_MAX_MAP,
+	"hf:Qwen/Qwen3.8-27B": {
 		off: null,
 		minimal: null,
 		low: "low",
-		medium: null,
-		high: "high",
-		xhigh: null,
-		max: "max",
-	},
-	"hf:Qwen/Qwen3.6-27B": NONE_LOW_MEDIUM_HIGH_MAP,
-	[MINIMAX_M3_MODEL_ID]: {
-		off: null,
-		minimal: null,
-		low: null,
 		medium: "medium",
 		high: null,
-		xhigh: null,
+		xhigh: "xhigh",
 		max: null,
 	},
 	"hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4": NONE_LOW_MEDIUM_HIGH_MAP,
 } as const;
 const REASONING_MODEL_EFFORTS = {
+	[GLM_5_3_FLASH_MODEL_ID]: ["low", "high", "max"],
 	[GLM_5_2_MODEL_ID]: ["none", "high", "max"],
 	"hf:zai-org/GLM-4.7-Flash": ["none", "low", "medium", "high"],
 	"hf:openai/gpt-oss-120b": ["none", "low", "medium", "high"],
 	[KIMI_K3_MODEL_ID]: ["low", "high", "max"],
-	"hf:Qwen/Qwen3.6-27B": ["none", "low", "medium", "high"],
-	[MINIMAX_M3_MODEL_ID]: ["medium"],
+	"hf:Qwen/Qwen3.8-27B": ["low", "medium", "xhigh"],
 	"hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4": ["none", "low", "medium", "high"],
 } as const;
 const REASONING_MODEL_IDS = Object.keys(REASONING_MODEL_MAPS);
@@ -246,10 +247,10 @@ describe("pi-synthetic-provider", () => {
 
 	it("resolves syn:* permalink overrides through the catalog target when effort metadata is absent", async () => {
 		const permalinks = [
-			["syn:large:text", "zai-org/GLM-5.2"],
+			["syn:large:text", "zai-org/GLM-5.3-Flash"],
 			["syn:small:text", "zai-org/GLM-4.7-Flash"],
 			["syn:large:vision", "moonshotai/Kimi-K3"],
-			["syn:small:vision", "Qwen/Qwen3.6-27B"],
+			["syn:small:vision", "Qwen/Qwen3.8-27B"],
 		] as const;
 		vi.stubGlobal(
 			"fetch",
@@ -290,7 +291,7 @@ describe("pi-synthetic-provider", () => {
 		const rows = [
 			{ id: "syn:large:vision", hugging_face_id: "moonshotai/Kimi-K9", supported_features: ["tools", "reasoning"] },
 			{ id: "syn:large:text", supported_features: ["tools", "reasoning"] },
-			{ id: "syn:small:vision", hugging_face_id: "hf:Qwen/Qwen3.6-27B", supported_features: ["tools", "reasoning"] },
+			{ id: "syn:small:vision", hugging_face_id: "hf:Qwen/Qwen3.8-27B", supported_features: ["tools", "reasoning"] },
 			{ id: "syn:small:text", hugging_face_id: "zai-org/GLM-4.7-Flash", supported_features: ["tools"] },
 		];
 		vi.stubGlobal(

@@ -27,10 +27,10 @@ describe("pi-synthetic-provider helpers", () => {
 			"syn:large:vision",
 			"syn:small:vision",
 			"hf:openai/gpt-oss-120b",
+			"hf:zai-org/GLM-5.3-Flash",
 			"hf:zai-org/GLM-5.2",
 			"hf:moonshotai/Kimi-K3",
-			"hf:Qwen/Qwen3.6-27B",
-			"hf:MiniMaxAI/MiniMax-M3",
+			"hf:Qwen/Qwen3.8-27B",
 			"hf:zai-org/GLM-4.7-Flash",
 			"hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4",
 		]);
@@ -41,6 +41,8 @@ describe("pi-synthetic-provider helpers", () => {
 			"hf:moonshotai/Kimi-K2.7-Code",
 			"hf:zai-org/GLM-4.7",
 			"hf:Qwen/Qwen3.5-397B-A17B",
+			"hf:Qwen/Qwen3.6-27B",
+			"hf:MiniMaxAI/MiniMax-M3",
 		]) {
 			expect(modelIds).not.toContain(staleId);
 		}
@@ -49,8 +51,10 @@ describe("pi-synthetic-provider helpers", () => {
 			reasoning: true,
 			maxTokens: 65536,
 		});
-		expect(models.find((model) => model.id === "hf:MiniMaxAI/MiniMax-M3")).toMatchObject({
-			contextWindow: 262144,
+		expect(models.find((model) => model.id === "hf:zai-org/GLM-5.3-Flash")).toMatchObject({
+			contextWindow: 524288,
+			input: ["text", "image"],
+			cost: { input: 0.15, output: 0.5, cacheRead: 0.04 },
 		});
 		expect(models.find((model) => model.id === "hf:moonshotai/Kimi-K3")).toMatchObject({
 			contextWindow: 524288,
@@ -62,23 +66,29 @@ describe("pi-synthetic-provider helpers", () => {
 			contextWindow: 524288,
 			cost: { input: 3, output: 15, cacheRead: 0.45 },
 		});
+		// syn:large:text was re-pointed from GLM 5.2 to the vision-capable GLM 5.3-Flash.
+		expect(models.find((model) => model.id === "syn:large:text")).toMatchObject({
+			contextWindow: 524288,
+			input: ["text", "image"],
+			cost: { input: 0.15, output: 0.5, cacheRead: 0.04 },
+		});
 	});
 
 	it("matches the live catalog price for every fallback model", () => {
 		// Exact expected values, not merely cacheRead < input: the bug being guarded
 		// against set cacheRead equal to input, and a too-low wrong value would still
-		// satisfy an inequality. Sourced from input_cache_reads in the 2026-07-28
-		// authenticated catalog pull.
+		// satisfy an inequality. Sourced from input_cache_reads in the 2026-08-30
+		// catalog pull.
 		const expected: Record<string, { input: number; output: number; cacheRead: number }> = {
-			"syn:large:text": { input: 1, output: 3, cacheRead: 0.16 },
+			"syn:large:text": { input: 0.15, output: 0.5, cacheRead: 0.04 },
 			"syn:small:text": { input: 0.1, output: 0.5, cacheRead: 0.02 },
 			"syn:large:vision": { input: 3, output: 15, cacheRead: 0.45 },
-			"syn:small:vision": { input: 0.45, output: 3.6, cacheRead: 0.09 },
+			"syn:small:vision": { input: 0.45, output: 2.2, cacheRead: 0.09 },
 			"hf:openai/gpt-oss-120b": { input: 0.1, output: 0.1, cacheRead: 0.02 },
+			"hf:zai-org/GLM-5.3-Flash": { input: 0.15, output: 0.5, cacheRead: 0.04 },
 			"hf:zai-org/GLM-5.2": { input: 1, output: 3, cacheRead: 0.16 },
 			"hf:moonshotai/Kimi-K3": { input: 3, output: 15, cacheRead: 0.45 },
-			"hf:Qwen/Qwen3.6-27B": { input: 0.45, output: 3.6, cacheRead: 0.09 },
-			"hf:MiniMaxAI/MiniMax-M3": { input: 0.6, output: 1.2, cacheRead: 0.12 },
+			"hf:Qwen/Qwen3.8-27B": { input: 0.45, output: 2.2, cacheRead: 0.09 },
 			"hf:zai-org/GLM-4.7-Flash": { input: 0.1, output: 0.5, cacheRead: 0.02 },
 			"hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4": { input: 0.3, output: 1, cacheRead: 0.06 },
 		};
@@ -107,21 +117,27 @@ describe("pi-synthetic-provider helpers", () => {
 			xhigh: null,
 			max: null,
 		};
+		const lowHighMax = {
+			off: null,
+			minimal: null,
+			low: "low",
+			medium: null,
+			high: "high",
+			xhigh: null,
+			max: "max",
+		};
 		const reasoningModels = [
+			["hf:zai-org/GLM-5.3-Flash", lowHighMax],
 			[
 				"hf:zai-org/GLM-5.2",
 				{ off: "none", minimal: null, low: null, medium: null, high: "high", xhigh: null, max: "max" },
 			],
 			["hf:zai-org/GLM-4.7-Flash", noneLowMediumHigh],
 			["hf:openai/gpt-oss-120b", noneLowMediumHigh],
+			["hf:moonshotai/Kimi-K3", lowHighMax],
 			[
-				"hf:moonshotai/Kimi-K3",
-				{ off: null, minimal: null, low: "low", medium: null, high: "high", xhigh: null, max: "max" },
-			],
-			["hf:Qwen/Qwen3.6-27B", noneLowMediumHigh],
-			[
-				"hf:MiniMaxAI/MiniMax-M3",
-				{ off: null, minimal: null, low: null, medium: "medium", high: null, xhigh: null, max: null },
+				"hf:Qwen/Qwen3.8-27B",
+				{ off: null, minimal: null, low: "low", medium: "medium", high: null, xhigh: "xhigh", max: null },
 			],
 			["hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4", noneLowMediumHigh],
 		] as const;
