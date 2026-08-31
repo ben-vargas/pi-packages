@@ -15,34 +15,6 @@ export const KIMI_K3_MODEL_ID = "hf:moonshotai/Kimi-K3";
 export const QWEN_3_8_27B_MODEL_ID = "hf:Qwen/Qwen3.8-27B";
 export const NEMOTRON_3_SUPER_MODEL_ID = "hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4";
 
-/**
- * @deprecated Synthetic retired this model alongside the Kimi K3 launch, so it no
- * longer appears in the catalog, in the fallback list, or in the reasoning-effort
- * table. The constant is retained only so deep imports of `extensions/models.js`
- * keep resolving — `extensions/` ships in the published package. Use
- * {@link KIMI_K3_MODEL_ID}, or the `syn:large:vision` permalink, which Synthetic
- * re-pointed from this model to K3.
- */
-export const KIMI_K27_CODE_MODEL_ID = "hf:moonshotai/Kimi-K2.7-Code";
-
-/**
- * @deprecated Synthetic retired this model alongside the Qwen 3.8-27B launch, so
- * it no longer appears in the catalog, in the fallback list, or in the
- * reasoning-effort table. The constant is retained only so deep imports of
- * `extensions/models.js` keep resolving — `extensions/` ships in the published
- * package. Use {@link QWEN_3_8_27B_MODEL_ID}, or the `syn:small:vision`
- * permalink, which Synthetic re-pointed from this model to Qwen 3.8-27B.
- */
-export const QWEN_3_6_27B_MODEL_ID = "hf:Qwen/Qwen3.6-27B";
-
-/**
- * @deprecated Synthetic retired this model, so it no longer appears in the
- * catalog, in the fallback list, or in the reasoning-effort table. The constant
- * is retained only so deep imports of `extensions/models.js` keep resolving —
- * `extensions/` ships in the published package.
- */
-export const MINIMAX_M3_MODEL_ID = "hf:MiniMaxAI/MiniMax-M3";
-
 type SyntheticModelOverrides = Pick<ProviderModelConfig, "compat"> &
 	Partial<Pick<ProviderModelConfig, "reasoning" | "thinkingLevelMap">>;
 type SyntheticThinkingLevel = keyof NonNullable<ProviderModelConfig["thinkingLevelMap"]>;

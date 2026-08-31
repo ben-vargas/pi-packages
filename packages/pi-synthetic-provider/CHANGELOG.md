@@ -7,17 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.5] - 2026-08-31
+
 ### Added
 - Added `hf:zai-org/GLM-5.3-Flash` to the fallback catalog and the reasoning-override table with its catalog-advertised `low`, `high`, and `max` efforts. Like Kimi K3 it always reasons, so `off` is unavailable. `syn:large:text` was re-pointed to it and resolves its overrides during live discovery.
+- Added `QWEN_3_8_27B_MODEL_ID` (`hf:Qwen/Qwen3.8-27B`) to the fallback catalog and the reasoning-override table; Synthetic replaced the retired Qwen 3.6-27B route with it. The new route advertises `low`, `medium`, and `xhigh`, so `off`, `high`, and `max` are not selectable for it.
 
 ### Changed
 - Refreshed the fallback catalog against the live `always_on` catalog as of 2026-08-30. `syn:large:text` now mirrors GLM 5.3-Flash: vision-capable and $0.15/$0.50 (was text-only at $1.00/$3.00 under GLM 5.2). `syn:small:vision` and the Qwen 27B entry drop to $2.20 output (was $3.60) with Qwen 3.8-27B.
-- Renamed `QWEN_3_6_27B_MODEL_ID` to `QWEN_3_8_27B_MODEL_ID` as Synthetic replaced Qwen 3.6-27B with Qwen 3.8-27B. The new route advertises `low`, `medium`, and `xhigh`, so `off`, `high`, and `max` are no longer selectable for it.
-
-### Deprecated
-- `QWEN_3_6_27B_MODEL_ID` and `MINIMAX_M3_MODEL_ID` are deprecated but still exported with their original values. Both models are retired from the catalog, so they no longer appear in the fallback list or the reasoning-override table, but `extensions/` ships in the published package and removing the named exports outright would break deep imports. Use `QWEN_3_8_27B_MODEL_ID`, or the `syn:small:vision` permalink that Synthetic re-pointed to Qwen 3.8-27B.
 
 ### Removed
+- Removed the deprecated `KIMI_K27_CODE_MODEL_ID` export. The constant was kept after the 1.2.2 deprecation only so deep imports of `extensions/models.js` kept resolving, but the model it names is retired and fails every request. Use `KIMI_K3_MODEL_ID`, or the `syn:large:vision` permalink that Synthetic re-pointed to K3.
+- Removed the `QWEN_3_6_27B_MODEL_ID` and `MINIMAX_M3_MODEL_ID` exports. Both models are retired from Synthetic's catalog, so the constants named dead model ids that fail every request. Use `QWEN_3_8_27B_MODEL_ID`, or the `syn:small:vision` permalink that Synthetic re-pointed to Qwen 3.8-27B.
 - Removed `hf:Qwen/Qwen3.6-27B` and `hf:MiniMaxAI/MiniMax-M3` from the fallback catalog and the reasoning-override table; Synthetic retired both, and keeping them offered offline configurations that fail every request.
 
 ## [1.2.4] - 2026-08-10
