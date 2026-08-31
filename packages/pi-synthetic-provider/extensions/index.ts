@@ -32,10 +32,10 @@
  *   pi /model
  *
  *   # Use specific model
- *   pi --model synthetic/hf:moonshotai/Kimi-K2.6
+ *   pi --model synthetic/hf:moonshotai/Kimi-K3
  *
  *   # Use default model
- *   pi --provider synthetic --model hf:moonshotai/Kimi-K2.6
+ *   pi --provider synthetic --model hf:moonshotai/Kimi-K3
  *
  * Note: Models are fetched dynamically from the API during startup and refreshed
  * at session start, so the available models list stays current.

@@ -7,23 +7,13 @@ import { SYNTHETIC_COMPAT, SYNTHETIC_MODELS_ENDPOINT } from "./config.js";
 import { parsePrice } from "./formatting.js";
 import type { SyntheticModel, SyntheticModelsResponse } from "./types.js";
 
+export const GLM_5_3_FLASH_MODEL_ID = "hf:zai-org/GLM-5.3-Flash";
 export const GLM_5_2_MODEL_ID = "hf:zai-org/GLM-5.2";
 export const GLM_4_7_FLASH_MODEL_ID = "hf:zai-org/GLM-4.7-Flash";
 export const GPT_OSS_120B_MODEL_ID = "hf:openai/gpt-oss-120b";
 export const KIMI_K3_MODEL_ID = "hf:moonshotai/Kimi-K3";
-export const QWEN_3_6_27B_MODEL_ID = "hf:Qwen/Qwen3.6-27B";
-export const MINIMAX_M3_MODEL_ID = "hf:MiniMaxAI/MiniMax-M3";
+export const QWEN_3_8_27B_MODEL_ID = "hf:Qwen/Qwen3.8-27B";
 export const NEMOTRON_3_SUPER_MODEL_ID = "hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4";
-
-/**
- * @deprecated Synthetic retired this model alongside the Kimi K3 launch, so it no
- * longer appears in the catalog, in the fallback list, or in the reasoning-effort
- * table. The constant is retained only so deep imports of `extensions/models.js`
- * keep resolving — `extensions/` ships in the published package. Use
- * {@link KIMI_K3_MODEL_ID}, or the `syn:large:vision` permalink, which Synthetic
- * re-pointed from this model to K3.
- */
-export const KIMI_K27_CODE_MODEL_ID = "hf:moonshotai/Kimi-K2.7-Code";
 
 type SyntheticModelOverrides = Pick<ProviderModelConfig, "compat"> &
 	Partial<Pick<ProviderModelConfig, "reasoning" | "thinkingLevelMap">>;
@@ -80,16 +70,16 @@ function createReasoningOverrides(efforts: readonly string[]): SyntheticModelOve
  * be fetched. Values mirror the authenticated catalog's
  * `reasoning_parameters.efforts`; live rows override these snapshots.
  *
- * Kimi K3 always reasons and only accepts `low`, `high`, and `max`, so `off` is
- * deliberately unavailable. MiniMax M3 is no longer in the current catalog; its
- * last verified `medium`-only control remains for the offline fallback entry.
+ * Kimi K3 and GLM 5.3-Flash always reason and only accept `low`, `high`, and
+ * `max`, so `off` is deliberately unavailable. Qwen 3.8-27B has no `none` either
+ * and tops out at `xhigh`, so `off`, `high`, and `max` are unavailable.
  */
+const GLM_5_3_FLASH_REASONING_OVERRIDES = createReasoningOverrides(["low", "high", "max"]);
 const GLM_5_2_REASONING_OVERRIDES = createReasoningOverrides(["none", "high", "max"]);
 const GLM_4_7_FLASH_REASONING_OVERRIDES = createReasoningOverrides(["none", "low", "medium", "high"]);
 const GPT_OSS_120B_REASONING_OVERRIDES = createReasoningOverrides(["none", "low", "medium", "high"]);
 const KIMI_K3_REASONING_OVERRIDES = createReasoningOverrides(["low", "high", "max"]);
-const QWEN_3_6_27B_REASONING_OVERRIDES = createReasoningOverrides(["none", "low", "medium", "high"]);
-const MINIMAX_M3_REASONING_OVERRIDES = createReasoningOverrides(["medium"]);
+const QWEN_3_8_27B_REASONING_OVERRIDES = createReasoningOverrides(["low", "medium", "xhigh"]);
 const NEMOTRON_3_SUPER_REASONING_OVERRIDES = createReasoningOverrides(["none", "low", "medium", "high"]);
 
 /**
@@ -98,12 +88,12 @@ const NEMOTRON_3_SUPER_REASONING_OVERRIDES = createReasoningOverrides(["none", "
  * would return a truthy non-override and be spread into a model config.
  */
 const REASONING_OVERRIDES = new Map<string, SyntheticModelOverrides>([
+	[GLM_5_3_FLASH_MODEL_ID, GLM_5_3_FLASH_REASONING_OVERRIDES],
 	[GLM_5_2_MODEL_ID, GLM_5_2_REASONING_OVERRIDES],
 	[GLM_4_7_FLASH_MODEL_ID, GLM_4_7_FLASH_REASONING_OVERRIDES],
 	[GPT_OSS_120B_MODEL_ID, GPT_OSS_120B_REASONING_OVERRIDES],
 	[KIMI_K3_MODEL_ID, KIMI_K3_REASONING_OVERRIDES],
-	[QWEN_3_6_27B_MODEL_ID, QWEN_3_6_27B_REASONING_OVERRIDES],
-	[MINIMAX_M3_MODEL_ID, MINIMAX_M3_REASONING_OVERRIDES],
+	[QWEN_3_8_27B_MODEL_ID, QWEN_3_8_27B_REASONING_OVERRIDES],
 	[NEMOTRON_3_SUPER_MODEL_ID, NEMOTRON_3_SUPER_REASONING_OVERRIDES],
 ]);
 
@@ -284,12 +274,13 @@ export async function fetchSyntheticModels(
 /**
  * Fallback models if API fetch fails.
  * Data sourced from: authenticated GET https://api.synthetic.new/openai/v1/models
- * Model metadata last updated: 2026-07-28
- * Reasoning efforts last updated: 2026-08-10
+ * Model metadata last updated: 2026-08-30
+ * Reasoning efforts last updated: 2026-08-30
  *
  * Mirrors the live `always_on` catalog. The `syn:*` permalinks are stable
- * aliases Synthetic re-points as models rotate; `syn:large:vision` now resolves
- * to Kimi K3 (was Kimi K2.7-Code, since retired) and `syn:large:text` to GLM 5.2.
+ * aliases Synthetic re-points as models rotate: `syn:large:vision` resolves to
+ * Kimi K3, `syn:large:text` to GLM 5.3-Flash, `syn:small:text` to GLM
+ * 4.7-Flash, and `syn:small:vision` to Qwen 3.8-27B.
  *
  * Pricing format: $/million tokens. `cacheRead` tracks the catalog's
  * `input_cache_reads` rate, which is well below the input rate on every model.
@@ -307,11 +298,11 @@ export function getFallbackModels(): ProviderModelConfig[] {
 			id: "syn:large:text",
 			name: "syn:large:text",
 			reasoning: true,
-			input: ["text"],
+			input: ["text", "image"],
 			cost: {
-				input: 1,
-				output: 3,
-				cacheRead: 0.16,
+				input: 0.15,
+				output: 0.5,
+				cacheRead: 0.04,
 				cacheWrite: 0,
 			},
 			contextWindow: 524288,
@@ -355,7 +346,7 @@ export function getFallbackModels(): ProviderModelConfig[] {
 			input: ["text", "image"],
 			cost: {
 				input: 0.45,
-				output: 3.6,
+				output: 2.2,
 				cacheRead: 0.09,
 				cacheWrite: 0,
 			},
@@ -377,6 +368,21 @@ export function getFallbackModels(): ProviderModelConfig[] {
 			contextWindow: 131072,
 			maxTokens: 65536,
 			...getSyntheticModelOverrides(GPT_OSS_120B_MODEL_ID),
+		},
+		{
+			id: GLM_5_3_FLASH_MODEL_ID,
+			name: "zai-org/GLM-5.3-Flash",
+			reasoning: true,
+			input: ["text", "image"],
+			cost: {
+				input: 0.15,
+				output: 0.5,
+				cacheRead: 0.04,
+				cacheWrite: 0,
+			},
+			contextWindow: 524288,
+			maxTokens: 65536,
+			...getSyntheticModelOverrides(GLM_5_3_FLASH_MODEL_ID),
 		},
 		{
 			id: GLM_5_2_MODEL_ID,
@@ -409,34 +415,19 @@ export function getFallbackModels(): ProviderModelConfig[] {
 			...getSyntheticModelOverrides(KIMI_K3_MODEL_ID),
 		},
 		{
-			id: QWEN_3_6_27B_MODEL_ID,
-			name: "Qwen/Qwen3.6-27B",
+			id: QWEN_3_8_27B_MODEL_ID,
+			name: "Qwen/Qwen3.8-27B",
 			reasoning: true,
 			input: ["text", "image"],
 			cost: {
 				input: 0.45,
-				output: 3.6,
+				output: 2.2,
 				cacheRead: 0.09,
 				cacheWrite: 0,
 			},
 			contextWindow: 262144,
 			maxTokens: 65536,
-			...getSyntheticModelOverrides(QWEN_3_6_27B_MODEL_ID),
-		},
-		{
-			id: MINIMAX_M3_MODEL_ID,
-			name: "MiniMaxAI/MiniMax-M3",
-			reasoning: true,
-			input: ["text", "image"],
-			cost: {
-				input: 0.6,
-				output: 1.2,
-				cacheRead: 0.12,
-				cacheWrite: 0,
-			},
-			contextWindow: 262144,
-			maxTokens: 65536,
-			...getSyntheticModelOverrides(MINIMAX_M3_MODEL_ID),
+			...getSyntheticModelOverrides(QWEN_3_8_27B_MODEL_ID),
 		},
 		{
 			id: GLM_4_7_FLASH_MODEL_ID,
