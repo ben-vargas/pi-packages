@@ -102,6 +102,36 @@ export function shouldApplyMruOverride(reason: SessionStartReason, hasSessionMes
 }
 
 /**
+ * Whether the process was launched with an explicit `--model` argument.
+ *
+ * Pi does not tell extensions whether the starting model came from the CLI,
+ * so this inspects the argv pi was started with. An explicit model must win
+ * over the MRU override: callers such as bb's Pi provider (`pi --mode rpc
+ * --model provider/id`), scripts, and anyone typing `pi --model ...` expect
+ * the model they asked for, and bb aborts the thread when the model pi
+ * reports back differs from the one it requested.
+ *
+ * Only pi's own spelling counts: `--model <value>` (pi 0.84.x has no `-m`
+ * alias). `--model=value` is accepted too in case pi adds it. `--models` is
+ * a scope list, not a selection, and is ignored. A trailing `--model` with no
+ * value is ignored.
+ *
+ * @param argv process arguments to inspect (normally `process.argv`)
+ */
+export function hasExplicitModelArg(argv: readonly string[]): boolean {
+	for (let i = 0; i < argv.length; i++) {
+		const arg = argv[i];
+		if (arg === "--model") {
+			const value = argv[i + 1];
+			if (value !== undefined && value !== "" && !value.startsWith("-")) return true;
+			continue;
+		}
+		if (arg.startsWith("--model=") && arg.length > "--model=".length) return true;
+	}
+	return false;
+}
+
+/**
  * Whether the model pi restored for this session start should be recorded as
  * last-used. Pi 0.84.3 restores a continued session's model during
  * construction without emitting `model_select`, so recency would otherwise

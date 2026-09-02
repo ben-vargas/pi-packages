@@ -45,6 +45,7 @@ import {
 	findMruModel,
 	handleModelSelect,
 	hasContextMessages,
+	hasExplicitModelArg,
 	type ModelSortConfig,
 	parseConfig,
 	recordThinkingSelect,
@@ -398,8 +399,21 @@ export default function (pi: ExtensionAPI) {
 		// branch_summary, compaction entries) — the same predicate pi core uses
 		// for its continuation check, not raw branch length and not literal
 		// message entries alone.
+		//
+		// An explicit `--model` on the command line always wins. Pi resolved
+		// that model during construction without emitting model_select, so on
+		// the initial startup record it as last-used instead of overriding it.
+		// This is what bb's Pi provider relies on: it launches
+		// `pi --mode rpc --model provider/id` and aborts the thread if pi
+		// reports a different model back.
 		const hasSessionMessages = hasContextMessages(ctx.sessionManager.buildContextEntries());
-		if (shouldApplyMruOverride(event.reason, hasSessionMessages) && Object.keys(lastUsed).length > 0) {
+		const explicitModel = hasExplicitModelArg(process.argv);
+		if (explicitModel && shouldApplyMruOverride(event.reason, hasSessionMessages)) {
+			if (event.reason === "startup" && ctx.model) {
+				lastUsed[buildModelKey(ctx.model.provider, ctx.model.id)] = Date.now();
+				writeConfig({ lastUsed, thinking: tracker.thinking });
+			}
+		} else if (shouldApplyMruOverride(event.reason, hasSessionMessages) && Object.keys(lastUsed).length > 0) {
 			const mruModel = findMruModel(lastUsed, ctx.modelRegistry);
 			const currentModel = ctx.model as { provider: string; id: string } | undefined;
 			if (

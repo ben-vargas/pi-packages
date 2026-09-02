@@ -7,6 +7,19 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-09-02
+
+### Fixed
+- An explicit `--model` on the command line now wins over the MRU startup
+  override. Previously a fresh start such as `pi --model provider/id` (or
+  bb's Pi provider, which launches `pi --mode rpc --model provider/id` and
+  aborts the thread with "Pi did not start with model ..." when pi reports a
+  different model back) was silently switched to the most recently used
+  model. The explicitly requested model is recorded as last-used on startup,
+  since pi sets it during construction without emitting `model_select`.
+  Detection inspects `process.argv` for `--model <value>` / `--model=value`;
+  `--models` (scope) is not treated as a selection.
+
 ## [1.0.0] - 2026-08-28
 
 ### Added

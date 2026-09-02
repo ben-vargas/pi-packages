@@ -5,6 +5,7 @@ Sorts pi's model picker by last usage and starts fresh sessions on your most rec
 - `/model` picker — both "Scope: all" and "Scope: scoped" views, including fuzzy-search results — is sorted by recency: current model first → most recently used → provider/id alphabetical
 - Ctrl+P / Ctrl+Shift+P **scoped** cycling follows last-used order (scoped models come from `enabledModels` or `--models`)
 - Fresh starts and `/new` begin on your most recently used model instead of `enabledModels[0]` or the hardcoded provider default
+- An explicit `--model` on the command line always wins over MRU (so `pi --model provider/id`, scripts, and bb's Pi provider get the model they asked for); that model is recorded as last-used
 - Continued sessions (`pi -c`, `--session`, `/resume`, forks) keep the model saved in the session file, and that restored model is recorded as last-used (fresh `/new` sessions and `/reload` are excluded from that recording)
 - Remembers the thinking level you last used on each model and restores it on every switch, clamped to what each model supports
 - No configuration needed — tracking starts on first use and degrades to the default alphabetical order with no history
@@ -31,6 +32,7 @@ The extension works automatically — there are no commands to learn.
 /model                    # Most recently used models appear at the top
 Ctrl+P / Ctrl+Shift+P     # Cycle through scoped models in last-used order
 pi                        # Fresh starts use MRU
+pi --model provider/id    # Explicit model wins over MRU
 pi -c                     # Continuations keep the session's model
 ```
 
@@ -38,7 +40,7 @@ pi -c                     # Continuations keep the session's model
 
 - Tracking uses pi's documented extension events: `/model` switches (`model_select`) and thinking-level changes (`thinking_level_select`) are timestamped into `~/.pi/agent/extensions/pi-model-sort.json`. Continued sessions restore their model during construction without emitting `model_select` (pi 0.84.3), so the extension records the restored model at `session_start` itself.
 - Sorting has no SDK hook, so the extension wraps (monkey-patches) internal methods: `ModelSelectorComponent.sortModels`, its scoped loader and `filterModels`, and `AgentSession._cycleScopedModel` for scoped cycling. All original methods are preserved and restored on shutdown/reload; the patches survive `modelRegistry.refresh()`.
-- The MRU startup override calls `pi.setModel()` on `session_start` for fresh starts and `/new` only. A continued session is detected by projecting its branch through pi's own context-message rules (`message`, `custom_message`, non-empty `branch_summary`, and `compaction` entries — exactly what `buildSessionContext()` counts) — pi seeds every new session with `model_change` + `thinking_level_change` entries before `session_start` fires, so raw branch length cannot distinguish fresh from continued.
+- The MRU startup override calls `pi.setModel()` on `session_start` for fresh starts and `/new` only, and never when the process was launched with `--model` (pi exposes no "model came from the CLI" signal to extensions, so the extension inspects `process.argv`). A continued session is detected by projecting its branch through pi's own context-message rules (`message`, `custom_message`, non-empty `branch_summary`, and `compaction` entries — exactly what `buildSessionContext()` counts) — pi seeds every new session with `model_change` + `thinking_level_change` entries before `session_start` fires, so raw branch length cannot distinguish fresh from continued.
 
 ### Known limitations on pi 0.84.x
 

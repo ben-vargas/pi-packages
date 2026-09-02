@@ -3,6 +3,7 @@ import {
 	buildModelKey,
 	findMruModel,
 	hasContextMessages,
+	hasExplicitModelArg,
 	parseConfig,
 	parseModelKey,
 	shouldApplyMruOverride,
@@ -237,6 +238,39 @@ describe("shouldApplyMruOverride", () => {
 		expect(shouldApplyMruOverride("resume", true)).toBe(false);
 		expect(shouldApplyMruOverride("reload", false)).toBe(false);
 		expect(shouldApplyMruOverride("fork", false)).toBe(false);
+	});
+});
+
+describe("hasExplicitModelArg", () => {
+	const node = ["/usr/bin/node", "/usr/lib/pi/main.js"];
+
+	it("detects --model with a value (bb's rpc launch shape)", () => {
+		expect(hasExplicitModelArg([...node, "--mode", "rpc", "--model", "opencode/muse-spark-1.3-contributor-free"])).toBe(
+			true,
+		);
+	});
+
+	it("detects --model with a thinking-level suffix", () => {
+		expect(hasExplicitModelArg([...node, "--model", "anthropic/claude-sonnet-4-5:high"])).toBe(true);
+	});
+
+	it("detects --model=value", () => {
+		expect(hasExplicitModelArg([...node, "--model=openai/gpt-4o"])).toBe(true);
+	});
+
+	it("returns false with no --model", () => {
+		expect(hasExplicitModelArg(node)).toBe(false);
+		expect(hasExplicitModelArg([...node, "-p", "hello"])).toBe(false);
+	});
+
+	it("ignores --models (scope list), not a selection", () => {
+		expect(hasExplicitModelArg([...node, "--models", "anthropic/*,openai/*"])).toBe(false);
+	});
+
+	it("ignores a trailing --model with no value or a flag where the value should be", () => {
+		expect(hasExplicitModelArg([...node, "--model"])).toBe(false);
+		expect(hasExplicitModelArg([...node, "--model", "--no-session"])).toBe(false);
+		expect(hasExplicitModelArg([...node, "--model="])).toBe(false);
 	});
 });
 
