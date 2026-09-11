@@ -7,6 +7,11 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-09-11
+
+### Added
+- Added a default verbosity entry for `openai-codex/gpt-6-astra` (new in pi 0.85.1), set to `low` like GPT-5.6 Sol. This mirrors the Codex CLI catalog's `default_verbosity: "low"` for the model, so the shipped defaults again cover every model in pi's `openai-codex` catalog.
+
 ## [1.1.1] - 2026-08-06
 
 ### Fixed

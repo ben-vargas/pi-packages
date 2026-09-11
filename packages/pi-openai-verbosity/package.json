@@ -1,6 +1,6 @@
 {
   "name": "@benvargas/pi-openai-verbosity",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Per-model OpenAI Codex text verbosity overrides for pi",
   "keywords": [
     "pi",
@@ -12,6 +12,7 @@
     "openai-codex",
     "gpt-5.5",
     "gpt-5.6-sol",
+    "gpt-6-astra",
     "verbosity",
     "text-verbosity",
     "per-model"
