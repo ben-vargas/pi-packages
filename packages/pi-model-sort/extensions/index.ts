@@ -316,18 +316,24 @@ function unpatchRegistry(registry: PatchedRegistry): void {
 // before cycling so Ctrl+P / Ctrl+Shift+P follows last-used order instead
 // of the configured order. Non-destructive: the session's stored order is
 // temporarily swapped and restored after the cycle lookup.
+//
+// Every argument is forwarded untouched: pi 0.84.3 added a second
+// `options: ModelMutationOptions` parameter and reads `options.persist` once
+// a next model is selected, so dropping it made every model-changing scoped
+// cycle (two or more available scoped models) throw. A single-model scope
+// returns early ("Only one model in scope") and never reached the crash.
 
 type ScopedModelEntry = { model: { provider: string; id: string }; thinkingLevel?: string };
 
-let origCycleScopedModel: ((direction: string) => Promise<unknown>) | null = null;
+let origCycleScopedModel: ((...args: unknown[]) => Promise<unknown>) | null = null;
 
 function patchCycleScopedModel(getLastUsed: () => Record<string, number>): void {
 	if (origCycleScopedModel !== null) return;
 
 	const proto = AgentSession.prototype as unknown as Record<string, unknown>;
-	origCycleScopedModel = proto._cycleScopedModel as (direction: string) => Promise<unknown>;
+	origCycleScopedModel = proto._cycleScopedModel as (...args: unknown[]) => Promise<unknown>;
 
-	proto._cycleScopedModel = async function (this: Record<string, unknown>, direction: string) {
+	proto._cycleScopedModel = async function (this: Record<string, unknown>, ...args: unknown[]) {
 		const orig = origCycleScopedModel;
 		if (!orig) return undefined;
 
@@ -335,7 +341,7 @@ function patchCycleScopedModel(getLastUsed: () => Record<string, number>): void 
 		const origScoped = this._scopedModels as ScopedModelEntry[] | undefined;
 
 		if (!origScoped || origScoped.length <= 1) {
-			return orig.call(this, direction);
+			return orig.apply(this, args);
 		}
 
 		// Sort by last-used without mutating the session's stored order.
@@ -351,7 +357,7 @@ function patchCycleScopedModel(getLastUsed: () => Record<string, number>): void 
 		// Temporarily swap for the cycle lookup, restore afterward.
 		this._scopedModels = sorted;
 		try {
-			return await orig.call(this, direction);
+			return await orig.apply(this, args);
 		} finally {
 			this._scopedModels = origScoped;
 		}
