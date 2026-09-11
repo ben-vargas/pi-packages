@@ -80,6 +80,18 @@ describe("pi-openai-fast helpers", () => {
 		).toBe(true);
 		expect(
 			_test.isFastSupportedModel(
+				{ provider: "openai", id: "gpt-6-astra" } as ExtensionContext["model"],
+				supportedModels,
+			),
+		).toBe(true);
+		expect(
+			_test.isFastSupportedModel(
+				{ provider: "openai-codex", id: "gpt-6-astra" } as ExtensionContext["model"],
+				supportedModels,
+			),
+		).toBe(true);
+		expect(
+			_test.isFastSupportedModel(
 				{ provider: "anthropic", id: "claude-sonnet-4" } as ExtensionContext["model"],
 				supportedModels,
 			),
@@ -101,11 +113,13 @@ describe("pi-openai-fast helpers", () => {
 				{ provider: "openai", id: "gpt-5.6-sol" },
 				{ provider: "openai", id: "gpt-5.6-terra" },
 				{ provider: "openai", id: "gpt-5.6-luna" },
+				{ provider: "openai", id: "gpt-6-astra" },
 				{ provider: "openai-codex", id: "gpt-5.4" },
 				{ provider: "openai-codex", id: "gpt-5.5" },
 				{ provider: "openai-codex", id: "gpt-5.6-sol" },
 				{ provider: "openai-codex", id: "gpt-5.6-terra" },
 				{ provider: "openai-codex", id: "gpt-5.6-luna" },
+				{ provider: "openai-codex", id: "gpt-6-astra" },
 			]);
 
 			const { projectConfigPath, globalConfigPath } = _test.getConfigPaths(cwd, homeDir);
@@ -159,6 +173,22 @@ describe("pi-openai-fast helpers", () => {
 		for (const legacyKeys of _test.LEGACY_DEFAULT_SUPPORTED_MODEL_KEY_SETS) {
 			expect(_test.migrateSupportedModelKeys([...legacyKeys])).toEqual([..._test.DEFAULT_SUPPORTED_MODEL_KEYS]);
 		}
+		// The 1.1.0 default (eleven models, gpt-5.4-mini included) is a legacy set now.
+		expect(
+			_test.migrateSupportedModelKeys([
+				"openai/gpt-5.4",
+				"openai/gpt-5.4-mini",
+				"openai/gpt-5.5",
+				"openai/gpt-5.6-sol",
+				"openai/gpt-5.6-terra",
+				"openai/gpt-5.6-luna",
+				"openai-codex/gpt-5.4",
+				"openai-codex/gpt-5.5",
+				"openai-codex/gpt-5.6-sol",
+				"openai-codex/gpt-5.6-terra",
+				"openai-codex/gpt-5.6-luna",
+			]),
+		).toContain("openai-codex/gpt-6-astra");
 		expect(_test.migrateSupportedModelKeys(["openai/gpt-5.4"])).toEqual(["openai/gpt-5.4"]);
 		expect(_test.migrateSupportedModelKeys(undefined)).toBeUndefined();
 	});

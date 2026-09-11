@@ -25,6 +25,8 @@ const FAST_COMMAND_ARGS = ["on", "off", "status"] as const;
 const FAST_SERVICE_TIER = "priority";
 // `openai/gpt-5.4-mini` has an official Fast-mode price and is API-key only: the
 // ChatGPT (openai-codex) catalog exposes no priority tier for gpt-5.4-mini.
+// `gpt-6-astra` (pi 0.85.1) has Fast-mode pricing on the API and a `priority`
+// service tier in the Codex catalog, so both providers are listed.
 const DEFAULT_SUPPORTED_MODEL_KEYS = [
 	"openai/gpt-5.4",
 	"openai/gpt-5.4-mini",
@@ -32,17 +34,32 @@ const DEFAULT_SUPPORTED_MODEL_KEYS = [
 	"openai/gpt-5.6-sol",
 	"openai/gpt-5.6-terra",
 	"openai/gpt-5.6-luna",
+	"openai/gpt-6-astra",
 	"openai-codex/gpt-5.4",
 	"openai-codex/gpt-5.5",
 	"openai-codex/gpt-5.6-sol",
 	"openai-codex/gpt-5.6-terra",
 	"openai-codex/gpt-5.6-luna",
+	"openai-codex/gpt-6-astra",
 ] as const;
 const LEGACY_DEFAULT_SUPPORTED_MODEL_KEY_SETS = [
 	["openai/gpt-5.4", "openai-codex/gpt-5.4"],
 	["openai/gpt-5.4", "openai/gpt-5.5", "openai-codex/gpt-5.4", "openai-codex/gpt-5.5"],
 	[
 		"openai/gpt-5.4",
+		"openai/gpt-5.5",
+		"openai/gpt-5.6-sol",
+		"openai/gpt-5.6-terra",
+		"openai/gpt-5.6-luna",
+		"openai-codex/gpt-5.4",
+		"openai-codex/gpt-5.5",
+		"openai-codex/gpt-5.6-sol",
+		"openai-codex/gpt-5.6-terra",
+		"openai-codex/gpt-5.6-luna",
+	],
+	[
+		"openai/gpt-5.4",
+		"openai/gpt-5.4-mini",
 		"openai/gpt-5.5",
 		"openai/gpt-5.6-sol",
 		"openai/gpt-5.6-terra",
