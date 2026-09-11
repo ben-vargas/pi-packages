@@ -289,9 +289,16 @@ function lower(name: string | undefined): string {
 	return (name ?? "").trim().toLowerCase();
 }
 
+// Aliases that have been advertised at least once in this session. Used to keep
+// historical `tool_use` rewriting stable across turns; see remapMessageToolNames.
+const everAdvertisedAliases = new Set<string>();
+
 function refreshAliasMap(userToolAliases: ToolAliasPair[], derivedPairs: ToolAliasPair[] = []): void {
 	FLAT_TO_MCP.clear();
 	MCP_TO_FLAT.clear();
+	// The alias map is being rebuilt, so observations made against the previous
+	// map no longer describe it.
+	everAdvertisedAliases.clear();
 	for (const [flat, mcp] of derivedPairs) {
 		FLAT_TO_MCP.set(lower(flat), mcp);
 		MCP_TO_FLAT.set(lower(mcp), flat);
@@ -453,6 +460,12 @@ function filterAndRemapTools(tools: unknown[] | undefined, disableFilter: boolea
 	if (!Array.isArray(tools)) return tools;
 
 	const advertised = collectToolNames(tools);
+	// Remember advertised aliases for the life of the session so historical
+	// tool_use rewriting cannot flip when a later payload omits them.
+	for (const mcpAlias of FLAT_TO_MCP.values()) {
+		const aliasLc = lower(mcpAlias);
+		if (advertised.has(aliasLc)) everAdvertisedAliases.add(aliasLc);
+	}
 	const toolsByName = collectToolsByName(tools);
 	const emitted = new Set<string>();
 	const result: unknown[] = [];
@@ -560,13 +573,32 @@ function remapToolChoice(
 	return undefined;
 }
 
-function remapMessageToolNames(messages: unknown[], survivingNames: Map<string, string>): unknown[] {
+// Historical `tool_use` names must serialize identically on every request, or
+// the Anthropic prompt cache breaks at the first tool call and the whole
+// conversation is written instead of read on every turn.
+//
+// `survivingNames` is rebuilt from the tools advertised in the *current*
+// payload, and that set is not stable across turns: deferred tool splitting and
+// mid-turn alias registration change which tools appear in any single request.
+// Gating history on it renamed the same past call to `mcp__server__tool` on one
+// turn and back to its flat name on the next, invalidating the cached prefix
+// every time. Measured in one 326-turn session: cacheRead pinned at 19,546
+// tokens (the static system+tools block) while 50.1M tokens were written
+// against 6.25M read.
+//
+// The fix is to decide from session-scoped state instead: an alias qualifies
+// once it has been registered by this extension or advertised at any point in
+// the session. Both signals only grow, so a call that was renamed on one turn
+// stays renamed on every later turn and the prefix keeps matching.
+function remapMessageToolNames(messages: unknown[], _survivingNames: Map<string, string>): unknown[] {
 	let anyChanged = false;
 	const result = messages.map((msg) => {
 		if (!isPlainObject(msg) || !Array.isArray(msg.content)) return msg;
 		const content = remapBlockNames(msg.content, "tool_use", (n) => {
 			const alias = FLAT_TO_MCP.get(lower(n));
-			return alias && survivingNames.has(lower(alias)) ? alias : undefined;
+			if (!alias) return undefined;
+			const aliasLc = lower(alias);
+			return registeredMcpAliases.has(aliasLc) || everAdvertisedAliases.has(aliasLc) ? alias : undefined;
 		});
 		if (content === msg.content) return msg;
 		anyChanged = true;

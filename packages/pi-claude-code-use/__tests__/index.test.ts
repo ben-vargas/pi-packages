@@ -445,6 +445,47 @@ describe("pi-claude-code-use", () => {
 		]);
 	});
 
+	it("keeps historical tool_use names stable when a later payload stops advertising the alias", () => {
+		_test.refreshAliasMap([], [["web_search_exa", "mcp__exa_mcp__web_search_exa"]]);
+		const history = [
+			{
+				role: "assistant",
+				content: [{ type: "tool_use", id: "toolu_1", name: "web_search_exa", input: {} }],
+			},
+		];
+
+		// Turn 1 advertises both the flat tool and its alias.
+		const first = _test.transformPayload(
+			{
+				messages: history,
+				tools: [
+					{ name: "web_search_exa", input_schema: {} },
+					{ name: "mcp__exa_mcp__web_search_exa", input_schema: {} },
+				],
+			},
+			false,
+		);
+
+		// Turn 2 advertises neither (deferred tool splitting drops them from this
+		// payload). The identical history must still serialize identically, or the
+		// prompt-cache prefix breaks at the first tool call on every turn.
+		const second = _test.transformPayload(
+			{
+				messages: history,
+				tools: [{ name: "Read", input_schema: {} }],
+			},
+			false,
+		);
+
+		expect(second.messages).toEqual(first.messages);
+		expect(second.messages).toEqual([
+			{
+				role: "assistant",
+				content: [{ type: "tool_use", id: "toolu_1", name: "mcp__exa_mcp__web_search_exa", input: {} }],
+			},
+		]);
+	});
+
 	it("preserves tool_use names when no MCP alias survives filtering", () => {
 		_test.refreshAliasMap([], [["web_search_exa", "mcp__exa_mcp__web_search_exa"]]);
 		const result = _test.transformPayload(
