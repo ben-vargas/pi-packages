@@ -121,7 +121,8 @@ By default, the extension mirrors the Codex CLI's own per-model verbosity defaul
     "openai-codex/gpt-5.5": "low",
     "openai-codex/gpt-5.6-luna": "low",
     "openai-codex/gpt-5.6-sol": "low",
-    "openai-codex/gpt-5.6-terra": "low"
+    "openai-codex/gpt-5.6-terra": "low",
+    "openai-codex/gpt-6-astra": "low"
   }
 }
 ```

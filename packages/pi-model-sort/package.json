@@ -1,6 +1,6 @@
 {
   "name": "@benvargas/pi-model-sort",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Sort models in pi by last usage and start fresh sessions on the most recently used model",
   "keywords": [
     "pi",

@@ -43,7 +43,7 @@ Config files follow the same project-over-global pattern as the other packages:
 
 The global path uses pi's agent directory — typically `~/.pi/agent`, but it follows `PI_CODING_AGENT_DIR` when that is set, matching where pi itself reads and writes config.
 
-Releases before this one always used `~/.pi/agent`, even with `PI_CODING_AGENT_DIR` set. If the agent directory differs from `~/.pi/agent` and has no config yet, an existing `~/.pi/agent/extensions/pi-openai-fast.json` is copied there once so previous settings carry over; a config already present in the agent directory is never overwritten.
+Releases before 1.1.0 always used `~/.pi/agent`, even with `PI_CODING_AGENT_DIR` set. If the agent directory differs from `~/.pi/agent` and has no config yet, an existing `~/.pi/agent/extensions/pi-openai-fast.json` is copied there once so previous settings carry over; a config already present in the agent directory is never overwritten.
 
 If neither exists, the extension writes a default global config on first run.
 
@@ -60,11 +60,13 @@ Default config:
     "openai/gpt-5.6-sol",
     "openai/gpt-5.6-terra",
     "openai/gpt-5.6-luna",
+    "openai/gpt-6-astra",
     "openai-codex/gpt-5.4",
     "openai-codex/gpt-5.5",
     "openai-codex/gpt-5.6-sol",
     "openai-codex/gpt-5.6-terra",
-    "openai-codex/gpt-5.6-luna"
+    "openai-codex/gpt-5.6-luna",
+    "openai-codex/gpt-6-astra"
   ]
 }
 ```
@@ -83,6 +85,7 @@ Project config overrides global config. `/fast on` and `/fast off` write to the 
 - Resumed sessions do not override the config-backed startup state.
 - On configured models, fast mode maps to OpenAI `service_tier=priority`.
 - `openai/gpt-5.4-mini` is in the defaults for the API-key provider only: OpenAI publishes Fast-mode pricing for it, but the ChatGPT (`openai-codex`) side offers no fast tier for gpt-5.4-mini. `gpt-5.4-nano`, `gpt-5.4-pro`, and `gpt-5.5-pro` have no published Fast-mode pricing and are left out.
+- `gpt-6-astra` (pi 0.85.1) is in the defaults for both providers: OpenAI publishes Fast-mode pricing for it (2x Standard, no latency SLA, not available with EU data residency), and the Codex catalog advertises a `priority` ("Fast", 2x speed) service tier for it.
 - If a default set from an older release is found in your config, it is upgraded to the current defaults automatically; customized `supportedModels` lists are left untouched.
 
 ## Uninstall

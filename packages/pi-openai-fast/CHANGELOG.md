@@ -7,6 +7,14 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-09-11
+
+### Added
+- Added fast mode support for `gpt-6-astra` (new in pi 0.85.1) on both the `openai` and `openai-codex` providers. OpenAI's pricing page lists a Fast-mode row for `gpt-6-astra` at 2x Standard ($20 input, $2 cached input, $25 cache writes, $100 output per 1M tokens, short context) and the Fast mode guide notes Astra Fast mode has no latency SLA and is unavailable with EU data residency; the Codex CLI model catalog advertises a `priority` ("Fast", "2x speed, increased usage") service tier for it. `service_tier: "priority"` remains accepted alongside `"fast"`.
+
+### Changed
+- Extended the legacy default model list migration so configs on the previous eleven-model default (1.1.0) upgrade to the current defaults; customized `supportedModels` lists are left untouched.
+
 ## [1.1.0] - 2026-08-06
 
 ### Added

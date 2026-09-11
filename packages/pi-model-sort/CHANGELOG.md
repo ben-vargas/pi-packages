@@ -7,6 +7,21 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-09-11
+
+### Fixed
+- Scoped Ctrl+P / Ctrl+Shift+P cycling no longer fails with "Cannot read
+  properties of undefined (reading 'persist')" on pi 0.84.3 and later. pi
+  0.84.3 added a second `options` parameter to `AgentSession._cycleScopedModel`
+  and reads `options.persist` once a next model is selected; the patch
+  forwarded only the direction, so every cycle that actually changed model (two
+  or more available scoped models) threw after pi had already swapped the model
+  (no `model_select`, so last-used and thinking-level memory were not updated).
+  A single-model scope was unaffected (pi returns "Only one model in scope"
+  before reading the options). The patch now forwards every argument
+  untouched. Validated against pi 0.85.1, including a regression test that
+  drives pi's real `AgentSession` through the patched cycle.
+
 ## [1.0.1] - 2026-09-02
 
 ### Fixed

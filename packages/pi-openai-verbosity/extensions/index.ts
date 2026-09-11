@@ -21,9 +21,10 @@ const VERBOSITY_CONFIG_BASENAME = "pi-openai-verbosity.json";
 const VERBOSITY_COMMAND_ARGS = ["status"] as const;
 const DEBUG_LOG_ENV = "PI_OPENAI_VERBOSITY_DEBUG_LOG";
 const SUPPORTED_PROVIDERS = ["openai-codex"] as const;
-// Mirrors the Codex CLI upstream defaults for every model in pi's openai-codex
-// catalog. pi itself falls back to `low` for all codex requests, which matches
-// upstream everywhere except gpt-5.4-mini (upstream default: medium).
+// Mirrors the Codex CLI upstream `default_verbosity` for every model in pi's
+// openai-codex catalog as of pi 0.85.1 (gpt-5.3-codex-spark through
+// gpt-6-astra). pi itself falls back to `low` for all codex requests, which
+// matches upstream everywhere except gpt-5.4-mini (upstream default: medium).
 const DEFAULT_MODEL_VERBOSITY = {
 	"openai-codex/gpt-5.3-codex-spark": "low",
 	"openai-codex/gpt-5.4": "low",
@@ -32,6 +33,7 @@ const DEFAULT_MODEL_VERBOSITY = {
 	"openai-codex/gpt-5.6-luna": "low",
 	"openai-codex/gpt-5.6-sol": "low",
 	"openai-codex/gpt-5.6-terra": "low",
+	"openai-codex/gpt-6-astra": "low",
 } as const;
 
 type TextVerbosity = "low" | "medium" | "high";

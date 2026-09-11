@@ -52,6 +52,7 @@ describe("pi-openai-verbosity helpers", () => {
 				"openai-codex/gpt-5.6-luna": "low",
 				"openai-codex/gpt-5.6-sol": "low",
 				"openai-codex/gpt-5.6-terra": "low",
+				"openai-codex/gpt-6-astra": "low",
 			});
 
 			const { projectConfigPath, globalConfigPath } = _test.getConfigPaths(cwd, agentDir);
