@@ -7,6 +7,16 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-09-20
+
+### Fixed
+- Keep historical tool-call aliases stable when outgoing tool definitions change, while the alias mapping stays unchanged. Cover consecutive request-hook refreshes, omitted/restored definitions, and preservation of call/result metadata (PR #37).
+- Remap Pi 0.86 native `tool_addition` and `tool_removal` references alongside tool definitions. Merge flat/alias updates without disabling aliases that remain selected, preserve initial activation and declaration order, and remove references to filtered tools.
+- Preserve Pi's reserved deferred placeholder and cache metadata across transcript tool changes.
+- Relocate history cache breakpoints to preceding eligible user or system content when filtered or redundant tool updates disappear. Preserve cache TTLs and existing breakpoints, and retain effort-only messages.
+- Apply system-prompt phrase rewriting to mid-conversation system messages, including when tool filtering is disabled, without changing user or assistant text.
+- Add offline regression tests using Pi 0.86's actual Anthropic request builder and extension hooks, validated against Pi 0.86.1.
+
 ## [2.2.0] - 2026-08-10
 
 ### Added
