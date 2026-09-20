@@ -12,11 +12,12 @@ When Pi is using Anthropic OAuth, this extension intercepts outbound API request
   - `pi itself` → `the cli itself`
   - `pi .md files` → `cli .md files`
   - `pi packages` → `cli packages`
-  Preserves Pi's original `system[]` structure, `cache_control` metadata, and non-text blocks.
-- **Tool filtering** -- passes through core Claude Code tools, Anthropic-native typed tools (e.g. `web_search`), and any tool prefixed with `mcp__`. Unknown flat-named tools are filtered out.
+  Applies to both the leading `system` field and Pi 0.86's later system messages. Preserves message structure, `cache_control` metadata, and non-text blocks; user and assistant prose are unchanged.
+- **Tool filtering** -- passes through core Claude Code tools, Anthropic-native typed tools (e.g. `web_search`), and any tool prefixed with `mcp__`. Preserves Pi 0.86's reserved `__pi_deferred_placeholder__` when it is deferred, retaining the transport's cache-prefix anchor. Unknown flat-named tools are filtered out.
 - **Automatic tool remapping** -- renames flat extension tool names to derived MCP-style aliases (e.g. `web_search_exa` becomes `mcp__exa_mcp__web_search_exa`). Duplicate flat entries are removed after remapping.
 - **tool_choice remapping** -- if `tool_choice` references a flat name that was remapped, the reference is updated to the MCP alias. If it references a tool that was filtered out, `tool_choice` is removed from the payload.
 - **Message history rewriting** -- `tool_use` blocks in conversation history that reference remapped flat names are rewritten to their MCP aliases so the model sees consistent tool names across the conversation.
+- **Transcript tool updates** (Pi >= 0.86) -- rewrites native `tool_addition` and `tool_removal` references to the same names as their tool definitions. Flat tools and their aliases share one wire tool: duplicate changes are merged, and removing a flat source does not disable an alias that remains selected. References to filtered tools are removed. Initial tool activation, deferred declarations, and cache metadata are preserved. If an entire update disappears, its cache breakpoint moves to the nearest preceding eligible user or system content, preserving the original TTL unless that content already has a breakpoint. Effort-only messages are retained.
 - **Dynamic alias registration** -- at session start and before each agent turn, reads Pi's live tool registry via `getAllTools()` and registers a schema-only MCP alias for every non-core flat tool, from any extension. This includes tools that other extensions register from lifecycle hooks (e.g. `pi-web-providers`), with no hardcoded extension list to maintain.
 - **Managed tool-call unaliasing** -- when the model calls an MCP alias registered by this extension, rewrites the finalized `toolCall` name back to the original flat tool name during `message_end`, before Pi resolves execution. Direct MCP tools from other extensions are left untouched.
 - **Compact alias result rendering** -- while a call streams under its `mcp__` alias name (before the `message_end` rewrite), the alias row renders results with a compact generic renderer: fully assembled output, including MIME-derived image placeholders, is normalized for the terminal before truncation and styling (ANSI CSI/OSC sequences in ESC and 8-bit C1 forms, remaining C0/C1 controls except tab/LF, DEL, and carriage returns are stripped) and collapsed to 3 lines / 2000 characters with a keybinding-aware `to expand` hint. Partial (streaming) results render the same way as they arrive. Inline images are left to Pi's tool row; a textual image placeholder appears only when images are hidden or the terminal cannot show them.
@@ -91,6 +92,8 @@ Because aliases are re-derived from the live registry on every agent turn, tools
 
 Session files always persist flat tool names (alias calls are rewritten back before persistence), so derived alias names can change across versions without corrupting resumed sessions.
 
+Outgoing historical calls keep their registered MCP alias even when the current request omits that tool's definitions, as long as the alias mapping is unchanged. Changing the alias configuration or removing the source from the registry can still change historical names.
+
 ## User-Defined Tool Aliases
 
 Derived names are deterministic but mechanical. To choose specific alias names (for example, ones that mirror a real MCP server's naming), create `~/.pi/agent/extensions/pi-claude-code-use.json` (global) or `<project>/.pi/extensions/pi-claude-code-use.json` (project). Schema:
@@ -117,6 +120,8 @@ The following tool names always pass through filtering (case-insensitive) and ar
 `Read`, `Write`, `Edit`, `Bash`, `Grep`, `Glob`, `AskUserQuestion`, `EnterPlanMode`, `ExitPlanMode`, `KillShell`, `NotebookEdit`, `Skill`, `Task`, `TaskOutput`, `TodoWrite`, `WebFetch`, `WebSearch`
 
 Additionally, any tool with a `type` field (Anthropic-native tools like `web_search`) and any tool prefixed with `mcp__` always passes through provider-request filtering. Direct MCP tools remain direct MCP tools; only aliases registered by `pi-claude-code-use` are rewritten back to flat names before local execution.
+
+Pi's transport-owned `__pi_deferred_placeholder__` also passes through when `defer_loading` is `true`. It is never activated or registered as an executable extension tool; arbitrary deferred flat tools still follow the normal filtering rules.
 
 ## Guidance For Extension Authors
 

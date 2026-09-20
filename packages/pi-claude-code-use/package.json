@@ -1,6 +1,6 @@
 {
   "name": "@benvargas/pi-claude-code-use",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "Patch Anthropic OAuth payloads and auto-alias extension tools for Claude Code-style subscription use",
   "keywords": [
     "pi",

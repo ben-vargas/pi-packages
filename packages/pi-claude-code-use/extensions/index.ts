@@ -217,6 +217,9 @@ const CORE_TOOL_NAMES = new Set([
 /** Anthropic's maximum tool name length. */
 const MAX_TOOL_NAME_LENGTH = 128;
 
+/** Pi 0.86's transport-owned, permanently deferred cache-prefix anchor. */
+const PI_DEFERRED_PLACEHOLDER = "__pi_deferred_placeholder__";
+
 /** Generic build/source directory names skipped when deriving an alias server segment from a path. */
 const GENERIC_DIR_NAMES = new Set(["extensions", "src", "dist", "lib", "build", "out"]);
 
@@ -421,7 +424,7 @@ function rewriteSystemField(system: unknown): unknown {
 // Tool filtering and MCP alias remapping (PRD §1.2)
 //
 // Rules applied per tool:
-// 1. Anthropic-native typed tools (have a `type` field) → pass through
+// 1. Anthropic-native typed tools and Pi's deferred placeholder → pass through
 // 2. Core Claude Code tool names → pass through
 // 3. Tools already prefixed with mcp__ → pass through
 // 4. Aliased flat tools whose MCP alias is also advertised → rename to alias
@@ -458,10 +461,10 @@ function filterAndRemapTools(tools: unknown[] | undefined, disableFilter: boolea
 	const result: unknown[] = [];
 
 	// Aliases (lowercase) that a flat entry in this payload will be renamed to.
-	// A standalone advertised alias stub is suppressed in favor of the renamed
-	// flat entry regardless of payload order, because the flat entry always
-	// carries the source tool's current schema.
+	// Prefer the flat entry's current schema over the advertised alias stub.
+	// If only the alias was active initially, retain its original position.
 	const replacedByFlat = new Set<string>();
+	const initialAliasReplacements = new Map<string, Record<string, unknown>>();
 	if (!disableFilter) {
 		for (const tool of tools) {
 			if (!isPlainObject(tool) || typeof tool.name !== "string") continue;
@@ -473,6 +476,15 @@ function filterAndRemapTools(tools: unknown[] | undefined, disableFilter: boolea
 			const aliasLc = lower(mcpAlias);
 			if (advertised.has(aliasLc) || registeredMcpAliases.has(aliasLc)) {
 				replacedByFlat.add(aliasLc);
+				const advertisedAlias = toolsByName.get(aliasLc);
+				if (tool.defer_loading === true && advertisedAlias && advertisedAlias.defer_loading !== true) {
+					// The alias was active before the flat source was declared. Keep
+					// its initial position and activation while using the source schema.
+					const renamed: Record<string, unknown> = { ...tool, name: mcpAlias };
+					delete renamed.defer_loading;
+					if (advertisedAlias.cache_control !== undefined) renamed.cache_control = advertisedAlias.cache_control;
+					initialAliasReplacements.set(aliasLc, renamed);
+				}
 			}
 		}
 	}
@@ -480,8 +492,12 @@ function filterAndRemapTools(tools: unknown[] | undefined, disableFilter: boolea
 	for (const tool of tools) {
 		if (!isPlainObject(tool)) continue;
 
-		// Rule 1: native typed tools always pass through
-		if (typeof tool.type === "string" && tool.type.trim().length > 0) {
+		// The placeholder is created by Pi's transport, not the extension tool
+		// registry. Keep its name, schema, position, and deferred state unchanged.
+		if (
+			(typeof tool.type === "string" && tool.type.trim().length > 0) ||
+			(tool.name === PI_DEFERRED_PLACEHOLDER && tool.defer_loading === true)
+		) {
 			result.push(tool);
 			continue;
 		}
@@ -491,12 +507,13 @@ function filterAndRemapTools(tools: unknown[] | undefined, disableFilter: boolea
 		const nameLc = lower(name);
 
 		// Rules 2 & 3: core tools and mcp__-prefixed pass through (with dedup).
-		// Alias stubs that a flat entry will replace are skipped here; the
-		// renamed flat entry is emitted at the flat entry's position instead.
+		// Skip stubs replaced at the flat entry's position, except when keeping
+		// an initially active alias ahead of its later, deferred flat source.
 		if (CORE_TOOL_NAMES.has(nameLc) || nameLc.startsWith("mcp__")) {
-			if (!emitted.has(nameLc) && !replacedByFlat.has(nameLc)) {
+			const initialAlias = initialAliasReplacements.get(nameLc);
+			if (!emitted.has(nameLc) && (!replacedByFlat.has(nameLc) || initialAlias)) {
 				emitted.add(nameLc);
-				result.push(tool);
+				result.push(initialAlias ?? tool);
 			}
 			continue;
 		}
@@ -508,6 +525,7 @@ function filterAndRemapTools(tools: unknown[] | undefined, disableFilter: boolea
 		const mcpAlias = FLAT_TO_MCP.get(nameLc);
 		if (mcpAlias) {
 			const aliasLc = lower(mcpAlias);
+			if (initialAliasReplacements.has(aliasLc)) continue;
 			if ((advertised.has(aliasLc) || registeredMcpAliases.has(aliasLc)) && !emitted.has(aliasLc)) {
 				// Rename the FLAT entry: it always carries the source tool's current
 				// schema, whereas an advertised alias stub can lag one turn behind a
@@ -560,18 +578,167 @@ function remapToolChoice(
 	return undefined;
 }
 
-function remapMessageToolNames(messages: unknown[], survivingNames: Map<string, string>): unknown[] {
-	let anyChanged = false;
-	const result = messages.map((msg) => {
-		if (!isPlainObject(msg) || !Array.isArray(msg.content)) return msg;
-		const content = remapBlockNames(msg.content, "tool_use", (n) => {
-			const alias = FLAT_TO_MCP.get(lower(n));
-			return alias && survivingNames.has(lower(alias)) ? alias : undefined;
-		});
-		if (content === msg.content) return msg;
-		anyChanged = true;
-		return { ...msg, content };
+type ToolChangeBlock = Record<string, unknown> & {
+	type: "tool_addition" | "tool_removal";
+	tool: Record<string, unknown> & { type: "tool_reference"; name: string };
+};
+
+function isToolChangeBlock(block: unknown): block is ToolChangeBlock {
+	return (
+		isPlainObject(block) &&
+		(block.type === "tool_addition" || block.type === "tool_removal") &&
+		isPlainObject(block.tool) &&
+		block.tool.type === "tool_reference" &&
+		typeof block.tool.name === "string"
+	);
+}
+
+function resolveWireToolName(name: string, survivingNames: Map<string, string>): string | undefined {
+	const nameLc = lower(name);
+	const alias = FLAT_TO_MCP.get(nameLc);
+	return survivingNames.get(nameLc) ?? (alias ? survivingNames.get(lower(alias)) : undefined);
+}
+
+/** Replay the raw tool loadout before projecting flat tools and aliases onto one wire name. */
+function remapSystemToolChanges(
+	content: unknown[],
+	activeNames: Set<string>,
+	survivingNames: Map<string, string>,
+): unknown[] {
+	if (!content.some(isToolChangeBlock)) return content;
+	const wireNames = () =>
+		new Set(
+			[...activeNames].map((name) => resolveWireToolName(name, survivingNames)).filter((name) => name !== undefined),
+		);
+	const before = wireNames();
+	const candidates: unknown[] = [];
+	const lastChanges = new Map<string, ToolChangeBlock>();
+	let droppedCacheControl: unknown;
+
+	for (const block of content) {
+		if (!isToolChangeBlock(block)) {
+			candidates.push(block);
+			continue;
+		}
+		const nameLc = lower(block.tool.name);
+		if (block.type === "tool_addition") activeNames.add(nameLc);
+		else activeNames.delete(nameLc);
+		const name = resolveWireToolName(block.tool.name, survivingNames);
+		if (!name) {
+			if (block.cache_control !== undefined) droppedCacheControl = block.cache_control;
+			continue;
+		}
+		const key = `${block.type}:${name}`;
+		const previous = lastChanges.get(key);
+		const remapped: ToolChangeBlock = { ...block, tool: { ...block.tool, name } };
+		if (previous?.cache_control !== undefined && remapped.cache_control === undefined) {
+			remapped.cache_control = previous.cache_control;
+		}
+		lastChanges.set(key, remapped);
+		candidates.push(remapped);
+	}
+
+	const after = wireNames();
+	const result = candidates.filter((block) => {
+		if (!isToolChangeBlock(block)) return true;
+		const { name } = block.tool;
+		// Keep only the net change. Removing the flat source must not withdraw a
+		// still-active alias, and flat+alias additions must produce one addition.
+		const changed =
+			block.type === "tool_addition" ? !before.has(name) && after.has(name) : before.has(name) && !after.has(name);
+		if (changed && lastChanges.get(`${block.type}:${name}`) === block) return true;
+		if (block.cache_control !== undefined) droppedCacheControl = block.cache_control;
+		return false;
 	});
+	const last = result.at(-1);
+	if (
+		droppedCacheControl !== undefined &&
+		isPlainObject(last) &&
+		(last.type === "text" || isToolChangeBlock(last)) &&
+		!result.some((block) => isPlainObject(block) && block.cache_control !== undefined)
+	) {
+		result[result.length - 1] = { ...last, cache_control: droppedCacheControl };
+	}
+	return result;
+}
+
+/** Move a lost history breakpoint backward, using the same block types Pi marks. */
+function restoreHistoryCacheControl(messages: unknown[], cacheControl: unknown): void {
+	for (let i = messages.length - 1; i >= 0; i--) {
+		const msg = messages[i];
+		if (!isPlainObject(msg) || (msg.role !== "user" && msg.role !== "system")) continue;
+		if (typeof msg.content === "string" && msg.content.trim().length > 0) {
+			messages[i] = { ...msg, content: [{ type: "text", text: msg.content, cache_control: cacheControl }] };
+			return;
+		}
+		if (!Array.isArray(msg.content)) continue;
+		for (let j = msg.content.length - 1; j >= 0; j--) {
+			const block = msg.content[j];
+			if (
+				!isPlainObject(block) ||
+				!(block.type === "text" || block.type === "image" || block.type === "tool_result" || isToolChangeBlock(block))
+			) {
+				continue;
+			}
+			// An existing breakpoint already covers this prefix; retain its TTL.
+			if (block.cache_control === undefined) {
+				const content = [...msg.content];
+				content[j] = { ...block, cache_control: cacheControl };
+				messages[i] = { ...msg, content };
+			}
+			return;
+		}
+	}
+}
+
+function remapMessageToolNames(
+	messages: unknown[],
+	survivingNames: Map<string, string>,
+	tools: unknown[] = [],
+): unknown[] {
+	// Non-deferred declarations are active initially; later declarations become
+	// available through the transcript's tool_addition blocks.
+	const activeNames = collectToolNames(tools.filter((tool) => isPlainObject(tool) && tool.defer_loading !== true));
+	let anyChanged = false;
+	const result: unknown[] = [];
+	for (const msg of messages) {
+		if (!isPlainObject(msg) || !Array.isArray(msg.content)) {
+			result.push(msg);
+			continue;
+		}
+		const content =
+			msg.role === "system"
+				? remapSystemToolChanges(msg.content, activeNames, survivingNames)
+				: remapBlockNames(msg.content, "tool_use", (n) => {
+						const alias = FLAT_TO_MCP.get(lower(n));
+						if (!alias) return undefined;
+						const aliasLc = lower(alias);
+						// With an unchanged mapping, registered aliases stay stable in history
+						// even when the current request omits their tool definitions.
+						return registeredMcpAliases.has(aliasLc) || survivingNames.has(aliasLc) ? alias : undefined;
+					});
+		if (content === msg.content) {
+			result.push(msg);
+			continue;
+		}
+		anyChanged = true;
+		// A filtered update may have no blocks left. Keep effort/configuration
+		// messages, whose fields outside content still carry meaning.
+		if (content.length > 0 || Object.keys(msg).some((key) => key !== "role" && key !== "content")) {
+			result.push({ ...msg, content });
+		}
+		if (msg.role === "system" && !content.some((block) => isPlainObject(block) && block.cache_control !== undefined)) {
+			// The within-message transfer cannot preserve a marker when every change
+			// disappears. Restore it on surviving content at or before this position.
+			for (let i = msg.content.length - 1; i >= 0; i--) {
+				const block = msg.content[i];
+				if (isToolChangeBlock(block) && block.cache_control !== undefined) {
+					restoreHistoryCacheControl(result, block.cache_control);
+					break;
+				}
+			}
+		}
+	}
 	return anyChanged ? result : messages;
 }
 
@@ -587,6 +754,11 @@ function transformPayload(raw: Record<string, unknown>, disableFilter: boolean):
 	if (payload.system !== undefined) {
 		payload.system = rewriteSystemField(payload.system);
 	}
+	if (Array.isArray(payload.messages)) {
+		payload.messages = payload.messages.map((msg) =>
+			isPlainObject(msg) && msg.role === "system" ? { ...msg, content: rewriteSystemField(msg.content) } : msg,
+		);
+	}
 
 	// When escape hatch is active, skip all tool filtering/remapping
 	if (disableFilter) {
@@ -594,6 +766,7 @@ function transformPayload(raw: Record<string, unknown>, disableFilter: boolean):
 	}
 
 	// 2. Tool filtering and alias remapping
+	const originalTools = Array.isArray(payload.tools) ? payload.tools : [];
 	payload.tools = filterAndRemapTools(payload.tools as unknown[] | undefined, false);
 
 	// 3. Build map of tool names that survived filtering (lowercase → actual name)
@@ -616,9 +789,9 @@ function transformPayload(raw: Record<string, unknown>, disableFilter: boolean):
 		}
 	}
 
-	// 5. Rewrite historical tool_use blocks in message history
+	// 5. Rewrite historical calls and native mid-conversation tool changes.
 	if (Array.isArray(payload.messages)) {
-		payload.messages = remapMessageToolNames(payload.messages, survivingNames);
+		payload.messages = remapMessageToolNames(payload.messages, survivingNames, originalTools);
 	}
 
 	return payload;
