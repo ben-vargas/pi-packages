@@ -27,8 +27,9 @@ describe("pi-synthetic-provider helpers", () => {
 			"syn:large:vision",
 			"syn:small:vision",
 			"hf:openai/gpt-oss-120b",
+			"hf:zai-org/GLM-5.3",
 			"hf:zai-org/GLM-5.3-Flash",
-			"hf:zai-org/GLM-5.2",
+			"hf:deepseek-ai/DeepSeek-V4.1-Flash",
 			"hf:moonshotai/Kimi-K3",
 			"hf:Qwen/Qwen3.8-27B",
 			"hf:zai-org/GLM-4.7-Flash",
@@ -37,6 +38,7 @@ describe("pi-synthetic-provider helpers", () => {
 
 		for (const staleId of [
 			"hf:zai-org/GLM-5.1",
+			"hf:zai-org/GLM-5.2",
 			"hf:moonshotai/Kimi-K2.6",
 			"hf:moonshotai/Kimi-K2.7-Code",
 			"hf:zai-org/GLM-4.7",
@@ -50,6 +52,16 @@ describe("pi-synthetic-provider helpers", () => {
 		expect(models.find((model) => model.id === "hf:openai/gpt-oss-120b")).toMatchObject({
 			reasoning: true,
 			maxTokens: 65536,
+		});
+		expect(models.find((model) => model.id === "hf:zai-org/GLM-5.3")).toMatchObject({
+			contextWindow: 524288,
+			input: ["text"],
+			cost: { input: 1.4, output: 4.4, cacheRead: 0.26 },
+		});
+		expect(models.find((model) => model.id === "hf:deepseek-ai/DeepSeek-V4.1-Flash")).toMatchObject({
+			contextWindow: 524288,
+			input: ["text", "image"],
+			cost: { input: 0.6, output: 1.2, cacheRead: 0.03 },
 		});
 		expect(models.find((model) => model.id === "hf:zai-org/GLM-5.3-Flash")).toMatchObject({
 			contextWindow: 524288,
@@ -66,27 +78,28 @@ describe("pi-synthetic-provider helpers", () => {
 			contextWindow: 524288,
 			cost: { input: 3, output: 15, cacheRead: 0.45 },
 		});
-		// syn:large:text was re-pointed from GLM 5.2 to the vision-capable GLM 5.3-Flash.
+		// syn:large:text was re-pointed from GLM 5.3-Flash to DeepSeek V4.1-Flash.
 		expect(models.find((model) => model.id === "syn:large:text")).toMatchObject({
 			contextWindow: 524288,
 			input: ["text", "image"],
-			cost: { input: 0.15, output: 0.5, cacheRead: 0.04 },
+			cost: { input: 0.6, output: 1.2, cacheRead: 0.03 },
 		});
 	});
 
 	it("matches the live catalog price for every fallback model", () => {
 		// Exact expected values, not merely cacheRead < input: the bug being guarded
 		// against set cacheRead equal to input, and a too-low wrong value would still
-		// satisfy an inequality. Sourced from input_cache_reads in the 2026-08-30
+		// satisfy an inequality. Sourced from input_cache_reads in the 2026-10-13
 		// catalog pull.
 		const expected: Record<string, { input: number; output: number; cacheRead: number }> = {
-			"syn:large:text": { input: 0.15, output: 0.5, cacheRead: 0.04 },
+			"syn:large:text": { input: 0.6, output: 1.2, cacheRead: 0.03 },
 			"syn:small:text": { input: 0.1, output: 0.5, cacheRead: 0.02 },
 			"syn:large:vision": { input: 3, output: 15, cacheRead: 0.45 },
 			"syn:small:vision": { input: 0.45, output: 2.2, cacheRead: 0.09 },
 			"hf:openai/gpt-oss-120b": { input: 0.1, output: 0.1, cacheRead: 0.02 },
+			"hf:zai-org/GLM-5.3": { input: 1.4, output: 4.4, cacheRead: 0.26 },
 			"hf:zai-org/GLM-5.3-Flash": { input: 0.15, output: 0.5, cacheRead: 0.04 },
-			"hf:zai-org/GLM-5.2": { input: 1, output: 3, cacheRead: 0.16 },
+			"hf:deepseek-ai/DeepSeek-V4.1-Flash": { input: 0.6, output: 1.2, cacheRead: 0.03 },
 			"hf:moonshotai/Kimi-K3": { input: 3, output: 15, cacheRead: 0.45 },
 			"hf:Qwen/Qwen3.8-27B": { input: 0.45, output: 2.2, cacheRead: 0.09 },
 			"hf:zai-org/GLM-4.7-Flash": { input: 0.1, output: 0.5, cacheRead: 0.02 },
@@ -127,10 +140,11 @@ describe("pi-synthetic-provider helpers", () => {
 			max: "max",
 		};
 		const reasoningModels = [
+			["hf:zai-org/GLM-5.3", lowHighMax],
 			["hf:zai-org/GLM-5.3-Flash", lowHighMax],
 			[
-				"hf:zai-org/GLM-5.2",
-				{ off: "none", minimal: null, low: null, medium: null, high: "high", xhigh: null, max: "max" },
+				"hf:deepseek-ai/DeepSeek-V4.1-Flash",
+				{ off: "none", minimal: null, low: "low", medium: null, high: "high", xhigh: "xhigh", max: "max" },
 			],
 			["hf:zai-org/GLM-4.7-Flash", noneLowMediumHigh],
 			["hf:openai/gpt-oss-120b", noneLowMediumHigh],

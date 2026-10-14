@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.6] - 2026-10-13
+
+### Added
+- Added `GLM_5_3_MODEL_ID` (`hf:zai-org/GLM-5.3`) to the fallback catalog and the reasoning-override table: text-only at $1.40/$4.40/$0.26 per million, with the catalog-advertised `low`, `high`, and `max` efforts. It always reasons, so `off` is unavailable.
+- Added `DEEPSEEK_V4_1_FLASH_MODEL_ID` (`hf:deepseek-ai/DeepSeek-V4.1-Flash`) to the fallback catalog and the reasoning-override table: vision-capable at $0.60/$1.20/$0.03 per million, with `none`, `low`, `high`, `xhigh`, and `max` efforts, so only `minimal` and `medium` are hidden.
+
+### Changed
+- Refreshed the fallback catalog against the live `always_on` catalog as of 2026-10-13. `syn:large:text` was re-pointed from GLM 5.3-Flash to DeepSeek V4.1-Flash, so its fallback entry is now $0.60/$1.20/$0.03 (was $0.15/$0.50/$0.04); it stays vision-capable with a 524K context.
+
+### Removed
+- Removed the `GLM_5_2_MODEL_ID` export and the `hf:zai-org/GLM-5.2` fallback entry and reasoning override. Synthetic retired GLM 5.2, so the constant named a dead model id that fails every request. Use `GLM_5_3_MODEL_ID` or `GLM_5_3_FLASH_MODEL_ID`.
+
 ## [1.2.5] - 2026-08-31
 
 ### Added

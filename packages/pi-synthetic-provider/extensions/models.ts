@@ -7,8 +7,9 @@ import { SYNTHETIC_COMPAT, SYNTHETIC_MODELS_ENDPOINT } from "./config.js";
 import { parsePrice } from "./formatting.js";
 import type { SyntheticModel, SyntheticModelsResponse } from "./types.js";
 
+export const GLM_5_3_MODEL_ID = "hf:zai-org/GLM-5.3";
 export const GLM_5_3_FLASH_MODEL_ID = "hf:zai-org/GLM-5.3-Flash";
-export const GLM_5_2_MODEL_ID = "hf:zai-org/GLM-5.2";
+export const DEEPSEEK_V4_1_FLASH_MODEL_ID = "hf:deepseek-ai/DeepSeek-V4.1-Flash";
 export const GLM_4_7_FLASH_MODEL_ID = "hf:zai-org/GLM-4.7-Flash";
 export const GPT_OSS_120B_MODEL_ID = "hf:openai/gpt-oss-120b";
 export const KIMI_K3_MODEL_ID = "hf:moonshotai/Kimi-K3";
@@ -70,12 +71,14 @@ function createReasoningOverrides(efforts: readonly string[]): SyntheticModelOve
  * be fetched. Values mirror the authenticated catalog's
  * `reasoning_parameters.efforts`; live rows override these snapshots.
  *
- * Kimi K3 and GLM 5.3-Flash always reason and only accept `low`, `high`, and
- * `max`, so `off` is deliberately unavailable. Qwen 3.8-27B has no `none` either
- * and tops out at `xhigh`, so `off`, `high`, and `max` are unavailable.
+ * Kimi K3, GLM 5.3, and GLM 5.3-Flash always reason and only accept `low`,
+ * `high`, and `max`, so `off` is deliberately unavailable. Qwen 3.8-27B has no
+ * `none` either and tops out at `xhigh`, so `off`, `high`, and `max` are
+ * unavailable. DeepSeek V4.1-Flash skips `medium`.
  */
+const GLM_5_3_REASONING_OVERRIDES = createReasoningOverrides(["low", "high", "max"]);
 const GLM_5_3_FLASH_REASONING_OVERRIDES = createReasoningOverrides(["low", "high", "max"]);
-const GLM_5_2_REASONING_OVERRIDES = createReasoningOverrides(["none", "high", "max"]);
+const DEEPSEEK_V4_1_FLASH_REASONING_OVERRIDES = createReasoningOverrides(["none", "low", "high", "xhigh", "max"]);
 const GLM_4_7_FLASH_REASONING_OVERRIDES = createReasoningOverrides(["none", "low", "medium", "high"]);
 const GPT_OSS_120B_REASONING_OVERRIDES = createReasoningOverrides(["none", "low", "medium", "high"]);
 const KIMI_K3_REASONING_OVERRIDES = createReasoningOverrides(["low", "high", "max"]);
@@ -88,8 +91,9 @@ const NEMOTRON_3_SUPER_REASONING_OVERRIDES = createReasoningOverrides(["none", "
  * would return a truthy non-override and be spread into a model config.
  */
 const REASONING_OVERRIDES = new Map<string, SyntheticModelOverrides>([
+	[GLM_5_3_MODEL_ID, GLM_5_3_REASONING_OVERRIDES],
 	[GLM_5_3_FLASH_MODEL_ID, GLM_5_3_FLASH_REASONING_OVERRIDES],
-	[GLM_5_2_MODEL_ID, GLM_5_2_REASONING_OVERRIDES],
+	[DEEPSEEK_V4_1_FLASH_MODEL_ID, DEEPSEEK_V4_1_FLASH_REASONING_OVERRIDES],
 	[GLM_4_7_FLASH_MODEL_ID, GLM_4_7_FLASH_REASONING_OVERRIDES],
 	[GPT_OSS_120B_MODEL_ID, GPT_OSS_120B_REASONING_OVERRIDES],
 	[KIMI_K3_MODEL_ID, KIMI_K3_REASONING_OVERRIDES],
@@ -274,12 +278,12 @@ export async function fetchSyntheticModels(
 /**
  * Fallback models if API fetch fails.
  * Data sourced from: authenticated GET https://api.synthetic.new/openai/v1/models
- * Model metadata last updated: 2026-08-30
- * Reasoning efforts last updated: 2026-08-30
+ * Model metadata last updated: 2026-10-13
+ * Reasoning efforts last updated: 2026-10-13
  *
  * Mirrors the live `always_on` catalog. The `syn:*` permalinks are stable
  * aliases Synthetic re-points as models rotate: `syn:large:vision` resolves to
- * Kimi K3, `syn:large:text` to GLM 5.3-Flash, `syn:small:text` to GLM
+ * Kimi K3, `syn:large:text` to DeepSeek V4.1-Flash, `syn:small:text` to GLM
  * 4.7-Flash, and `syn:small:vision` to Qwen 3.8-27B.
  *
  * Pricing format: $/million tokens. `cacheRead` tracks the catalog's
@@ -300,9 +304,9 @@ export function getFallbackModels(): ProviderModelConfig[] {
 			reasoning: true,
 			input: ["text", "image"],
 			cost: {
-				input: 0.15,
-				output: 0.5,
-				cacheRead: 0.04,
+				input: 0.6,
+				output: 1.2,
+				cacheRead: 0.03,
 				cacheWrite: 0,
 			},
 			contextWindow: 524288,
@@ -370,6 +374,21 @@ export function getFallbackModels(): ProviderModelConfig[] {
 			...getSyntheticModelOverrides(GPT_OSS_120B_MODEL_ID),
 		},
 		{
+			id: GLM_5_3_MODEL_ID,
+			name: "zai-org/GLM-5.3",
+			reasoning: true,
+			input: ["text"],
+			cost: {
+				input: 1.4,
+				output: 4.4,
+				cacheRead: 0.26,
+				cacheWrite: 0,
+			},
+			contextWindow: 524288,
+			maxTokens: 65536,
+			...getSyntheticModelOverrides(GLM_5_3_MODEL_ID),
+		},
+		{
 			id: GLM_5_3_FLASH_MODEL_ID,
 			name: "zai-org/GLM-5.3-Flash",
 			reasoning: true,
@@ -385,19 +404,19 @@ export function getFallbackModels(): ProviderModelConfig[] {
 			...getSyntheticModelOverrides(GLM_5_3_FLASH_MODEL_ID),
 		},
 		{
-			id: GLM_5_2_MODEL_ID,
-			name: "zai-org/GLM-5.2",
+			id: DEEPSEEK_V4_1_FLASH_MODEL_ID,
+			name: "deepseek-ai/DeepSeek-V4.1-Flash",
 			reasoning: true,
-			input: ["text"],
+			input: ["text", "image"],
 			cost: {
-				input: 1,
-				output: 3,
-				cacheRead: 0.16,
+				input: 0.6,
+				output: 1.2,
+				cacheRead: 0.03,
 				cacheWrite: 0,
 			},
 			contextWindow: 524288,
 			maxTokens: 65536,
-			...getSyntheticModelOverrides(GLM_5_2_MODEL_ID),
+			...getSyntheticModelOverrides(DEEPSEEK_V4_1_FLASH_MODEL_ID),
 		},
 		{
 			id: KIMI_K3_MODEL_ID,
