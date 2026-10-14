@@ -3,8 +3,9 @@ import type { ExtensionAPI, ProviderModelConfig } from "@earendil-works/pi-codin
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import syntheticProvider, { getFallbackModels } from "../extensions/index.js";
 
+const GLM_5_3_MODEL_ID = "hf:zai-org/GLM-5.3";
 const GLM_5_3_FLASH_MODEL_ID = "hf:zai-org/GLM-5.3-Flash";
-const GLM_5_2_MODEL_ID = "hf:zai-org/GLM-5.2";
+const DEEPSEEK_V4_1_FLASH_MODEL_ID = "hf:deepseek-ai/DeepSeek-V4.1-Flash";
 const KIMI_K3_MODEL_ID = "hf:moonshotai/Kimi-K3";
 const NONE_LOW_MEDIUM_HIGH_MAP = {
 	off: "none",
@@ -25,14 +26,15 @@ const LOW_HIGH_MAX_MAP = {
 	max: "max",
 } as const;
 const REASONING_MODEL_MAPS = {
+	[GLM_5_3_MODEL_ID]: LOW_HIGH_MAX_MAP,
 	[GLM_5_3_FLASH_MODEL_ID]: LOW_HIGH_MAX_MAP,
-	[GLM_5_2_MODEL_ID]: {
+	[DEEPSEEK_V4_1_FLASH_MODEL_ID]: {
 		off: "none",
 		minimal: null,
-		low: null,
+		low: "low",
 		medium: null,
 		high: "high",
-		xhigh: null,
+		xhigh: "xhigh",
 		max: "max",
 	},
 	"hf:zai-org/GLM-4.7-Flash": NONE_LOW_MEDIUM_HIGH_MAP,
@@ -50,8 +52,9 @@ const REASONING_MODEL_MAPS = {
 	"hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4": NONE_LOW_MEDIUM_HIGH_MAP,
 } as const;
 const REASONING_MODEL_EFFORTS = {
+	[GLM_5_3_MODEL_ID]: ["low", "high", "max"],
 	[GLM_5_3_FLASH_MODEL_ID]: ["low", "high", "max"],
-	[GLM_5_2_MODEL_ID]: ["none", "high", "max"],
+	[DEEPSEEK_V4_1_FLASH_MODEL_ID]: ["none", "low", "high", "xhigh", "max"],
 	"hf:zai-org/GLM-4.7-Flash": ["none", "low", "medium", "high"],
 	"hf:openai/gpt-oss-120b": ["none", "low", "medium", "high"],
 	[KIMI_K3_MODEL_ID]: ["low", "high", "max"],
@@ -75,16 +78,16 @@ const stubModelsFetch = () => {
 			json: async () => ({
 				data: [
 					{
-						id: "hf:zai-org/GLM-5.2",
-						name: "zai-org/GLM-5.2",
+						id: "hf:zai-org/GLM-5.3",
+						name: "zai-org/GLM-5.3",
 						always_on: true,
 						supported_features: ["tools", "reasoning"],
 						input_modalities: ["text"],
 						context_length: 524288,
 						max_output_length: 65536,
 						pricing: {
-							prompt: "1",
-							completion: "3",
+							prompt: "1.4",
+							completion: "4.4",
 						},
 					},
 				],
@@ -119,7 +122,7 @@ describe("pi-synthetic-provider", () => {
 			expect.objectContaining({
 				api: "openai-completions",
 				apiKey: "$SYNTHETIC_API_KEY",
-				models: [expect.objectContaining({ id: "hf:zai-org/GLM-5.2" })],
+				models: [expect.objectContaining({ id: "hf:zai-org/GLM-5.3" })],
 			}),
 		);
 		expect(mockPi.registerCommand).toHaveBeenCalledWith(
@@ -247,7 +250,7 @@ describe("pi-synthetic-provider", () => {
 
 	it("resolves syn:* permalink overrides through the catalog target when effort metadata is absent", async () => {
 		const permalinks = [
-			["syn:large:text", "zai-org/GLM-5.3-Flash"],
+			["syn:large:text", "deepseek-ai/DeepSeek-V4.1-Flash"],
 			["syn:small:text", "zai-org/GLM-4.7-Flash"],
 			["syn:large:vision", "moonshotai/Kimi-K3"],
 			["syn:small:vision", "Qwen/Qwen3.8-27B"],
