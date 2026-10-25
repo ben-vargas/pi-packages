@@ -114,7 +114,7 @@ function changes(payload: WirePayload) {
 	);
 }
 
-// Tool aliasing is opt-in; these suites exercise it, so enable it per test.
+// Pin tool aliasing on (the default) so the environment cannot change these suites.
 beforeEach(() => {
 	vi.stubEnv("PI_CLAUDE_CODE_USE_TOOL_ALIASES", "1");
 });

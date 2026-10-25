@@ -7,6 +7,11 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-10-25
+
+### Fixed
+- Turn tool aliasing back on by default. 3.0.0 made it opt-in after live tests with a single synthetic tool, but Anthropic also fingerprints some real flat tool names: `web_search_exa` and `get_code_context_exa` each route OAuth requests to extra usage (`400 You're out of extra usage`), so 3.0.0 broke sessions using pi-exa-mcp. Disable aliasing with `PI_CLAUDE_CODE_USE_TOOL_ALIASES=0` or `"toolAliasing": false` in `pi-claude-code-use.json`; `PI_CLAUDE_CODE_USE_TOOL_ALIASES=1` forces it on.
+
 ## [3.0.0] - 2026-10-25
 
 ### Changed

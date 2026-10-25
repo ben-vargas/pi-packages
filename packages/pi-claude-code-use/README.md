@@ -6,7 +6,9 @@ It does not register a new provider or replace Pi's Anthropic request transport.
 
 ## What It Changes
 
-When Pi is using Anthropic OAuth, this extension intercepts outbound API requests via the `before_provider_request` hook and rewrites a small set of Pi-identifying phrases in system prompt text:
+When Pi is using Anthropic OAuth, this extension intercepts outbound API requests via the `before_provider_request` hook. It does two things, both needed to keep requests on the Claude subscription.
+
+**System prompt rewrite** (always on) -- rewrites a small set of Pi-identifying phrases in system prompt text:
 
 - `pi itself` → `the cli itself`
 - `pi .md files` → `cli .md files`
@@ -14,18 +16,20 @@ When Pi is using Anthropic OAuth, this extension intercepts outbound API request
 
 This applies to both the leading `system` field and Pi's later system messages (Pi >= 0.86). Message structure, `cache_control` metadata, and non-text blocks are preserved; user and assistant prose are unchanged.
 
-The rewrite is what keeps requests on the Claude subscription. In live tests on 2026-10-25 (Pi 1.4.0), Anthropic routed requests whose system prompt contained `pi itself` or `pi packages` to paid extra usage (`400 You're out of extra usage` when none is available), while the same requests with the rewrite succeeded. Tool names made no difference: flat custom tool names such as `web_search_exa` were accepted.
+**Tool aliasing** (on by default, see [Tool Aliasing](#tool-aliasing)) -- presents flat custom tools under MCP-style `mcp__<server>__<tool>` names.
+
+In live tests on 2026-10-25 (Pi 1.4.0), Anthropic routed requests to paid extra usage (`400 You're out of extra usage` when none is available) when the system prompt contained `pi itself` or `pi packages`, or when the request declared certain flat custom tool names: `web_search_exa` and `get_code_context_exa` each triggered it alone, while `firecrawl_scrape`, `firecrawl_map`, and an arbitrary test tool did not. With both the rewrite and aliasing, requests succeeded.
 
 Non-OAuth Anthropic usage and non-Anthropic providers are left completely unchanged.
 
-## Optional Tool Aliasing
+## Tool Aliasing
 
-Earlier, Anthropic's OAuth endpoint also refused flat-named custom tools, so this extension presented them under MCP-style aliases. That check is gone as of the tests above, so tool aliasing is **off by default** and kept as a fallback in case it returns. Enable it with either:
+Tool aliasing is **on by default**, because Anthropic fingerprints some flat tool names (see above). Disable it with either:
 
-- `PI_CLAUDE_CODE_USE_TOOL_ALIASES=1` (`0` forces it off), or
-- `"toolAliasing": true` in `pi-claude-code-use.json` (see [User-Defined Tool Aliases](#user-defined-tool-aliases) for file locations).
+- `PI_CLAUDE_CODE_USE_TOOL_ALIASES=0` (`1` forces it on), or
+- `"toolAliasing": false` in `pi-claude-code-use.json` (see [User-Defined Tool Aliases](#user-defined-tool-aliases) for file locations).
 
-The environment variable wins over the config. While enabled, the extension also does the following on Anthropic OAuth requests:
+The environment variable wins over the config. While enabled, the extension does the following on Anthropic OAuth requests:
 
 - **Tool filtering** -- passes through core Claude Code tools, Anthropic-native typed tools (e.g. `web_search`), and any tool prefixed with `mcp__`. Preserves Pi 0.86's reserved `__pi_deferred_placeholder__` when it is deferred, retaining the transport's cache-prefix anchor. Unknown flat-named tools are filtered out.
 - **Automatic tool remapping** -- renames flat extension tool names to derived MCP-style aliases (e.g. `web_search_exa` becomes `mcp__exa_mcp__web_search_exa`). Duplicate flat entries are removed after remapping.
@@ -60,14 +64,14 @@ Install the package and continue using the normal `anthropic` provider with Anth
 /model anthropic/claude-opus-4-6
 ```
 
-No extra configuration is required. To turn on the optional tool aliasing, see [Optional Tool Aliasing](#optional-tool-aliasing).
+No extra configuration is required.
 
 ## Environment Variables
 
 | Variable | Description |
 |---|---|
 | `PI_CLAUDE_CODE_USE_DEBUG_LOG` | Set to a file path to enable debug logging. Writes two JSON entries per Anthropic OAuth request: one with `"stage": "before"` (the original payload from Pi) and one with `"stage": "after"` (the transformed payload sent to Anthropic). |
-| `PI_CLAUDE_CODE_USE_TOOL_ALIASES` | Set to `1` to enable [optional tool aliasing](#optional-tool-aliasing), or `0` to disable it regardless of the config. |
+| `PI_CLAUDE_CODE_USE_TOOL_ALIASES` | Set to `0` to disable [tool aliasing](#tool-aliasing), or `1` to enable it, regardless of the config. Unset uses the config (on by default). |
 | `PI_CLAUDE_CODE_USE_DISABLE_TOOL_FILTER` | With tool aliasing enabled, set to `1` to disable tool filtering and renaming. System prompt rewriting still applies, but all tools pass through unchanged. Useful for debugging whether a tool-filtering issue is causing a problem. |
 | `PI_CLAUDE_CODE_USE_DISABLE_AUTO_ALIAS` | With tool aliasing enabled, set to `1` to disable automatic alias derivation. Only user-configured `toolAliases` are registered; other flat-named tools are filtered out on Anthropic OAuth requests. |
 | `PI_CLAUDE_CODE_USE_DISABLE_PROSE_UNALIAS` | With tool aliasing enabled, set to `1` to disable displayed prose un-cloaking, showing assistant text exactly as the model wrote it (with `mcp__` alias names). Useful when debugging the aliasing layer itself, e.g. checking which names the model actually uses. |
@@ -80,7 +84,7 @@ PI_CLAUDE_CODE_USE_DEBUG_LOG=/tmp/pi-claude-debug.log pi -e /path/to/extensions/
 
 ## Automatic Tool Aliases
 
-When [tool aliasing](#optional-tool-aliasing) is enabled: Anthropic's OAuth endpoint accepts any name shaped like `mcp__<server>__<tool>` (it does not validate that a real MCP server exists), which is what made aliasing work while flat names were refused. Instead of maintaining a hardcoded list of known extensions, `pi-claude-code-use` derives an MCP alias for every non-core flat tool in Pi's live registry:
+When [tool aliasing](#tool-aliasing) is enabled: Anthropic's OAuth endpoint accepts any name shaped like `mcp__<server>__<tool>` (it does not validate that a real MCP server exists), which is what made aliasing work while flat names were refused. Instead of maintaining a hardcoded list of known extensions, `pi-claude-code-use` derives an MCP alias for every non-core flat tool in Pi's live registry:
 
 1. At `session_start` and `before_agent_start`, it calls `pi.getAllTools()` and inspects each tool's `sourceInfo`.
 2. The `<server>` segment is derived from where the tool came from, in priority order:
@@ -125,7 +129,7 @@ Each entry maps an existing flat Pi tool name to the MCP-style name Anthropic sh
 
 User-configured aliases override automatic derivation for that flat tool. They are otherwise treated the same as derived aliases: Anthropic sees the MCP-style name, but managed alias calls are canonicalized back to the flat source tool before local execution. MCP-style tools that are provided directly by another extension are not rewritten unless `pi-claude-code-use` registered that same alias.
 
-Entries take effect only while [tool aliasing](#optional-tool-aliasing) is enabled; `toolAliases` alone does not enable it. Project keys replace global keys, so a project `toolAliases` list replaces the global one. Set `"toolAliases": []` in the project file to disable inherited globals (automatic derivation still applies unless `PI_CLAUDE_CODE_USE_DISABLE_AUTO_ALIAS=1`).
+Entries take effect while [tool aliasing](#tool-aliasing) is enabled (the default). Project keys replace global keys, so a project `toolAliases` list replaces the global one. Set `"toolAliases": []` in the project file to disable inherited globals (automatic derivation still applies unless `PI_CLAUDE_CODE_USE_DISABLE_AUTO_ALIAS=1`).
 
 ## Core Tools Allowlist
 
@@ -139,13 +143,11 @@ Pi's transport-owned `__pi_deferred_placeholder__` also passes through when `def
 
 ## Guidance For Extension Authors
 
-Flat extension tool names such as `web_search_exa` work with Anthropic OAuth as of 2026-10-25; no special naming is needed.
-
-Earlier, Anthropic's OAuth subscription path fingerprinted tool names: flat names were rejected while MCP-style names (`mcp__<server>__<tool>`, e.g. `mcp__exa__web_search`) were accepted. If that check returns, enable [tool aliasing](#optional-tool-aliasing), which derives and registers an MCP-style alias for every non-core flat tool in Pi's registry, including tools registered from lifecycle hooks. Tools registered directly under an MCP-style name never need aliasing.
+Anthropic's OAuth subscription path fingerprints some tool names: flat names such as `web_search_exa` can route requests to extra usage, while MCP-style names (`mcp__<server>__<tool>`, e.g. `mcp__exa__web_search`) are accepted. With tool aliasing on (the default), `pi-claude-code-use` derives and registers an MCP-style alias for every non-core flat tool in Pi's registry, including tools registered from lifecycle hooks. Tools registered directly under an MCP-style name never need aliasing.
 
 ## Known Limitations
 
-These apply only while [tool aliasing](#optional-tool-aliasing) is enabled.
+These apply while [tool aliasing](#tool-aliasing) is enabled (the default).
 
 Pi's `getAllTools()` exposes each tool's name, description, parameter schema, prompt guidelines, and source metadata — but not the full `ToolDefinition`. As a result, alias tools do not carry:
 
@@ -161,5 +163,5 @@ These are display/metadata-level gaps; execution correctness is unaffected. They
 
 - The extension activates for all Anthropic OAuth requests regardless of model, rather than using a fixed model allowlist.
 - Non-OAuth Anthropic usage (API key auth) is left unchanged.
-- Anthropic's extra-usage classification has changed over time. Earlier, unknown non-MCP extension tools triggered it, which is why tool aliasing exists; as of 2026-10-25 only the system prompt phrases did. If flat tool names start failing again, enable [tool aliasing](#optional-tool-aliasing).
+- Anthropic's extra-usage classification has changed over time and matches only some tool names, so keep [tool aliasing](#tool-aliasing) on unless you have verified your tool set without it.
 - Pi may show its built-in OAuth subscription warning banner even when the request path works correctly. That banner is UI logic in Pi, not a signal that the upstream request is being billed as extra usage.

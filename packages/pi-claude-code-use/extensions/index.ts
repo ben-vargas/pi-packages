@@ -56,7 +56,7 @@ function writeDebugLog(payload: unknown): void {
 // ============================================================================
 
 interface TransformOptions {
-	/** Alias tools as well (opt-in tool aliasing). */
+	/** Alias tools as well (tool aliasing enabled). */
 	aliasTools?: boolean;
 	/** Active tool names, used to hide aliases whose source Pi left undeclared. */
 	activeToolNames?: readonly string[];

@@ -87,7 +87,11 @@ afterEach(() => {
 	rmSync(scratch, { recursive: true, force: true });
 });
 
-describe("default behavior (tool aliasing off)", () => {
+describe("tool aliasing disabled", () => {
+	beforeEach(() => {
+		writeConfig(join(projectDir, ".pi", "extensions"), { toolAliasing: false });
+	});
+
 	it("rewrites only the system prompt and leaves tool names untouched", async () => {
 		const { pi, emit } = await load();
 		await emit("session_start");
@@ -120,26 +124,25 @@ describe("default behavior (tool aliasing off)", () => {
 	});
 });
 
-describe("tool aliasing opt-in", () => {
-	it("is enabled by the config and overridden by the env var", () => {
-		expect(_test.isToolAliasingEnabled(projectDir, agentDir)).toBe(false);
-
-		writeConfig(join(agentDir, "extensions"), { toolAliasing: true });
+describe("tool aliasing default and overrides", () => {
+	it("is on by default, disabled by the config, and overridden by the env var", () => {
 		expect(_test.isToolAliasingEnabled(projectDir, agentDir)).toBe(true);
+
+		writeConfig(join(agentDir, "extensions"), { toolAliasing: false });
+		expect(_test.isToolAliasingEnabled(projectDir, agentDir)).toBe(false);
 
 		// The project config replaces the global key.
-		writeConfig(join(projectDir, ".pi", "extensions"), { toolAliasing: false });
-		expect(_test.isToolAliasingEnabled(projectDir, agentDir)).toBe(false);
-
-		vi.stubEnv("PI_CLAUDE_CODE_USE_TOOL_ALIASES", "1");
-		expect(_test.isToolAliasingEnabled(projectDir, agentDir)).toBe(true);
 		writeConfig(join(projectDir, ".pi", "extensions"), { toolAliasing: true });
+		expect(_test.isToolAliasingEnabled(projectDir, agentDir)).toBe(true);
+
 		vi.stubEnv("PI_CLAUDE_CODE_USE_TOOL_ALIASES", "0");
 		expect(_test.isToolAliasingEnabled(projectDir, agentDir)).toBe(false);
+		writeConfig(join(projectDir, ".pi", "extensions"), { toolAliasing: false });
+		vi.stubEnv("PI_CLAUDE_CODE_USE_TOOL_ALIASES", "1");
+		expect(_test.isToolAliasingEnabled(projectDir, agentDir)).toBe(true);
 	});
 
-	it("registers and applies aliases when enabled in the project config", async () => {
-		writeConfig(join(projectDir, ".pi", "extensions"), { toolAliasing: true });
+	it("registers and applies aliases without any configuration", async () => {
 		const { pi, emit } = await load();
 		await emit("session_start");
 		expect(pi.registerTool).toHaveBeenCalledWith(
