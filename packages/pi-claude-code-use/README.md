@@ -139,21 +139,9 @@ Pi's transport-owned `__pi_deferred_placeholder__` also passes through when `def
 
 ## Guidance For Extension Authors
 
-Anthropic's OAuth subscription path appears to fingerprint tool names. Flat extension tool names such as `web_search_exa` were rejected in live testing, while MCP-style names such as `mcp__exa__web_search` were accepted.
+Flat extension tool names such as `web_search_exa` work with Anthropic OAuth as of 2026-10-25; no special naming is needed.
 
-If you want a custom tool to survive Anthropic OAuth filtering cleanly, prefer registering it directly under an MCP-style name:
-
-```text
-mcp__<server>__<tool>
-```
-
-Examples:
-
-- `mcp__exa__web_search`
-- `mcp__firecrawl__scrape`
-- `mcp__mytools__lookup_customer`
-
-That said, flat-named tools no longer require any special handling: `pi-claude-code-use` automatically derives and registers an MCP-style alias for every non-core flat tool it finds in Pi's registry, including tools registered from lifecycle hooks. Registering directly under an MCP-style name simply avoids the aliasing layer entirely.
+Earlier, Anthropic's OAuth subscription path fingerprinted tool names: flat names were rejected while MCP-style names (`mcp__<server>__<tool>`, e.g. `mcp__exa__web_search`) were accepted. If that check returns, enable [tool aliasing](#optional-tool-aliasing), which derives and registers an MCP-style alias for every non-core flat tool in Pi's registry, including tools registered from lifecycle hooks. Tools registered directly under an MCP-style name never need aliasing.
 
 ## Known Limitations
 
