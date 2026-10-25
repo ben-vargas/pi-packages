@@ -44,12 +44,12 @@ export function loadConfig(cwd: string, agentDir: string = getAgentDir()): Recor
 }
 
 /**
- * Tool aliasing is opt-in. `PI_CLAUDE_CODE_USE_TOOL_ALIASES=1` or `=0` wins;
- * otherwise `"toolAliasing": true` in the config enables it.
+ * Tool aliasing is on by default. `PI_CLAUDE_CODE_USE_TOOL_ALIASES=0` or `=1`
+ * wins; otherwise `"toolAliasing": false` in the config disables it.
  */
 export function isToolAliasingEnabled(cwd: string, agentDir?: string): boolean {
 	const env = process.env.PI_CLAUDE_CODE_USE_TOOL_ALIASES;
 	if (env === "1") return true;
 	if (env === "0") return false;
-	return loadConfig(cwd, agentDir).toolAliasing === true;
+	return loadConfig(cwd, agentDir).toolAliasing !== false;
 }

@@ -7,10 +7,15 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-10-25
+
+### Fixed
+- Turn tool aliasing back on by default. 3.0.0 made it opt-in after live tests with a single synthetic tool, but Anthropic also fingerprints some real flat tool names: `web_search_exa` and `get_code_context_exa` each route OAuth requests to extra usage (`400 You're out of extra usage`), so 3.0.0 broke sessions using pi-exa-mcp. Disable aliasing with `PI_CLAUDE_CODE_USE_TOOL_ALIASES=0` or `"toolAliasing": false` in `pi-claude-code-use.json`; `PI_CLAUDE_CODE_USE_TOOL_ALIASES=1` forces it on.
+
 ## [3.0.0] - 2026-10-25
 
 ### Changed
-- **Tool aliasing is now opt-in.** Live tests against Anthropic's OAuth endpoint on 2026-10-25 (Pi 1.4.0) showed the system prompt phrases `pi itself` and `pi packages` are what route requests to extra usage; flat custom tool names are accepted. By default the extension now only rewrites the system prompt and leaves tools, `tool_choice`, transcript tool changes, and tool calls untouched. Enable the previous MCP-alias behavior with `PI_CLAUDE_CODE_USE_TOOL_ALIASES=1` or `"toolAliasing": true` in `pi-claude-code-use.json`; `toolAliases` entries apply only while it is enabled.
+- **Tool aliasing is now opt-in.** *(Superseded by 3.0.1: some flat tool names, such as `web_search_exa`, do route requests to extra usage, so aliasing is on by default again.)* Live tests against Anthropic's OAuth endpoint on 2026-10-25 (Pi 1.4.0) showed the system prompt phrases `pi itself` and `pi packages` are what route requests to extra usage; flat custom tool names are accepted. By default the extension now only rewrites the system prompt and leaves tools, `tool_choice`, transcript tool changes, and tool calls untouched. Enable the previous MCP-alias behavior with `PI_CLAUDE_CODE_USE_TOOL_ALIASES=1` or `"toolAliasing": true` in `pi-claude-code-use.json`; `toolAliases` entries apply only while it is enabled.
 - Split the extension into modules: the prompt rewrite (`extensions/prompt.ts`) and the opt-in aliasing (`extensions/tool-aliases/`: registry, payload transform, rendering, and shared state).
 
 ### Fixed

@@ -1,12 +1,12 @@
 // ============================================================================
-// Opt-in MCP-style tool aliasing
+// MCP-style tool aliasing (on by default)
 //
-// Anthropic's OAuth endpoint used to refuse flat-named custom tools, so this
-// module presented every non-core flat tool to the model under a derived
-// `mcp__<server>__<tool>` alias. Live tests on 2026-10-25 showed flat names
-// are accepted again, so aliasing is off by default and kept as a fallback in
-// case the check returns. Enable it with PI_CLAUDE_CODE_USE_TOOL_ALIASES=1 or
-// `"toolAliasing": true` in pi-claude-code-use.json.
+// Anthropic's OAuth endpoint routes requests carrying some flat custom tool
+// names to extra usage (verified live 2026-10-25: `web_search_exa` and
+// `get_code_context_exa` each trigger it), so this module presents every
+// non-core flat tool to the model under a derived `mcp__<server>__<tool>`
+// alias. Disable it with PI_CLAUDE_CODE_USE_TOOL_ALIASES=0 or
+// `"toolAliasing": false` in pi-claude-code-use.json.
 //
 // Flow while enabled:
 //   1. registry: register a schema-only, model-only alias tool for each
