@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.7] - 2026-10-25
+
+### Added
+- Added `DEEPSEEK_V4_1_FLASH_1017_MODEL_ID` (`hf:deepseek-ai/DeepSeek-V4.1-Flash-1017`) to the fallback catalog and the reasoning-override table: vision-capable at $0.60/$1.20/$0.03 per million, with `none`, `low`, `high`, `xhigh`, and `max` efforts.
+- Added `INFINITE_SMALL_VISION_MODEL_ID` (`infinite:small:vision`) to the fallback catalog: a zero-priced, vision-capable route with a 524K context. Like the `syn:*` permalinks, its fallback entry carries no effort map; live discovery uses the catalog's advertised efforts.
+- Exported the `SyntheticModelConfig` type, the chat-model subset of pi's `ProviderModelConfig`.
+
+### Changed
+- Refreshed the fallback catalog against the live `always_on` catalog as of 2026-10-25. `syn:large:text` now targets DeepSeek V4.1-Flash 10/17 at unchanged pricing. `syn:small:vision` was re-pointed from Qwen 3.8-27B to DeepSeek V4.1-Flash 10/17, so its fallback entry is now $0.60/$1.20/$0.03 with a 524K context (was $0.45/$2.20/$0.09 and 262K).
+- `fetchSyntheticModels()` and `getFallbackModels()` now return `SyntheticModelConfig[]`. Pi 0.99 widened `ProviderModelConfig` into a chat/image/classifier union, and the narrower type keeps `reasoning`, `thinkingLevelMap`, and `compat` accessible. The values are unchanged and still assignable to `ProviderModelConfig[]`.
+- Verified against pi 1.4.0.
+
 ## [1.2.6] - 2026-10-13
 
 ### Added

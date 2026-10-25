@@ -7,6 +7,15 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-25
+
+### Added
+- Added support for the `openai` provider. pi 1.x supersedes `openai-codex` with Sign in with ChatGPT on `openai`, whose Responses requests carry no `text.verbosity` and so run at the API default (`medium`). `openai/<model>` keys are now accepted in config.
+- Added default `openai/*` entries mirroring the Codex CLI's `default_verbosity`: `low` for `gpt-5.3-codex-spark`, `gpt-5.4`, `gpt-5.5`, `gpt-5.6-luna`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-6-astra`, `gpt-6-luna`, `gpt-6-sol`, and `gpt-6.1-sol`, and `medium` for `gpt-5.4-mini`. Set a model to `medium` to keep the API default.
+
+### Changed
+- Verified against pi 1.4.0.
+
 ## [1.1.2] - 2026-09-11
 
 ### Added

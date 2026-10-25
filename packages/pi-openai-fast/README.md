@@ -61,6 +61,9 @@ Default config:
     "openai/gpt-5.6-terra",
     "openai/gpt-5.6-luna",
     "openai/gpt-6-astra",
+    "openai/gpt-6-sol",
+    "openai/gpt-6.1-sol",
+    "openai/gpt-6-luna",
     "openai-codex/gpt-5.4",
     "openai-codex/gpt-5.5",
     "openai-codex/gpt-5.6-sol",
@@ -86,6 +89,7 @@ Project config overrides global config. `/fast on` and `/fast off` write to the 
 - On configured models, fast mode maps to OpenAI `service_tier=priority`.
 - `openai/gpt-5.4-mini` is in the defaults for the API-key provider only: OpenAI publishes Fast-mode pricing for it, but the ChatGPT (`openai-codex`) side offers no fast tier for gpt-5.4-mini. `gpt-5.4-nano`, `gpt-5.4-pro`, and `gpt-5.5-pro` have no published Fast-mode pricing and are left out.
 - `gpt-6-astra` (pi 0.85.1) is in the defaults for both providers: OpenAI publishes Fast-mode pricing for it (2x Standard, no latency SLA, not available with EU data residency), and the Codex catalog advertises a `priority` ("Fast", 2x speed) service tier for it.
+- `gpt-6-sol`, `gpt-6.1-sol`, and `gpt-6-luna` are in the defaults for the `openai` provider, which Sign in with ChatGPT uses in pi 1.x. The Codex CLI catalog advertises a `priority` ("Fast") service tier for all three. Pi's legacy `openai-codex` provider does not list them.
 - If a default set from an older release is found in your config, it is upgraded to the current defaults automatically; customized `supportedModels` lists are left untouched.
 
 ## Uninstall

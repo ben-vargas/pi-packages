@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Context, Tool } from "@earendil-works/pi-ai";
 import { stream } from "@earendil-works/pi-ai/api/anthropic-messages";
-import { getModel, normalizeContext } from "@earendil-works/pi-ai/compat";
+import { normalizeContext } from "@earendil-works/pi-ai/compat";
+import { getBuiltinModel } from "@earendil-works/pi-ai/providers/all";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -15,7 +16,7 @@ type Handler = (event: Record<string, unknown>, ctx: ExtensionContext) => unknow
 interface WireBlock {
 	type: string;
 	text?: string;
-	tool?: { type: string; name: string };
+	tool?: { type: string; name?: string; definition?: { name: string; description?: string; input_schema?: unknown } };
 	cache_control?: unknown;
 }
 interface WirePayload {
@@ -27,7 +28,7 @@ interface WirePayload {
 const PLACEHOLDER = "__pi_deferred_placeholder__";
 const EXA_ALIAS = "mcp__review__web_search_exa";
 const FIRECRAWL_ALIAS = "mcp__review__firecrawl_search";
-const model = { ...getModel("anthropic", "claude-fable-5-1"), baseUrl: "http://127.0.0.1:9" };
+const model = { ...getBuiltinModel("anthropic", "claude-fable-5-1"), baseUrl: "http://127.0.0.1:9" };
 let scratch: string;
 
 function tool(name: string): ToolInfo {
@@ -35,6 +36,7 @@ function tool(name: string): ToolInfo {
 		name,
 		description: `${name} description`,
 		parameters: Type.Object({ query: Type.Optional(Type.String()) }),
+		exposure: "direct",
 		sourceInfo: { path: "/packages/pi-review/extensions/index.ts", source: "test", scope: "user", origin: "package" },
 	};
 }
@@ -79,7 +81,7 @@ async function createRuntime() {
 			const fetch = vi.fn(async () => {
 				throw new Error("Network is forbidden in this regression test");
 			});
-			// Exercise the real 0.86 adapter and the real request hook, aborting
+			// Exercise Pi's real Anthropic adapter and the real request hook, aborting
 			// before any request is sent. No user credentials or provider calls.
 			const result = await stream(model, normalizeContext(context), {
 				apiKey: "sk-ant-oat-test-never-sent",
@@ -99,6 +101,11 @@ async function createRuntime() {
 	};
 }
 
+/** Name of a tool change: a Pi 0.86 reference or a Pi 1.x inline definition. */
+function changeName(block: WireBlock): string | undefined {
+	return block.tool?.definition?.name ?? block.tool?.name;
+}
+
 function changes(payload: WirePayload) {
 	return payload.messages.flatMap((message) =>
 		Array.isArray(message.content)
@@ -106,6 +113,14 @@ function changes(payload: WirePayload) {
 			: [],
 	);
 }
+
+// Tool aliasing is opt-in; these suites exercise it, so enable it per test.
+beforeEach(() => {
+	vi.stubEnv("PI_CLAUDE_CODE_USE_TOOL_ALIASES", "1");
+});
+afterEach(() => {
+	vi.unstubAllEnvs();
+});
 
 beforeEach(() => {
 	scratch = mkdtempSync(join(tmpdir(), "pi-086-claude-"));
@@ -128,7 +143,7 @@ afterEach(() => {
 	rmSync(scratch, { recursive: true, force: true });
 });
 
-describe("Pi 0.86 native Anthropic transcript updates", () => {
+describe("Pi native Anthropic transcript updates", () => {
 	it("keeps historical aliases stable through request-hook refreshes when definitions disappear", async () => {
 		const runtime = await createRuntime();
 		const history = [
@@ -226,15 +241,24 @@ describe("Pi 0.86 native Anthropic transcript updates", () => {
 			{ role: "user", content: "pi packages", timestamp: 3 },
 		);
 		const addition = await runtime.capture(context);
-		expect(addition.after.tools.slice(0, initial.after.tools.length)).toEqual(initial.after.tools);
-		expect(addition.after.tools.at(-1)).toMatchObject({ name: FIRECRAWL_ALIAS, defer_loading: true });
+		// Pi 1.x keeps the top-level list fixed and defines later tools inline.
+		expect(addition.after.tools).toEqual(initial.after.tools);
+		expect(changes(addition.before).map(changeName)).toEqual(["firecrawl_search", FIRECRAWL_ALIAS]);
 		expect(changes(addition.after)).toEqual([
 			{
 				type: "tool_addition",
-				tool: { type: "tool_reference", name: FIRECRAWL_ALIAS },
+				tool: {
+					type: "tool_definition",
+					definition: expect.objectContaining({
+						name: FIRECRAWL_ALIAS,
+						description: "firecrawl_search description",
+					}),
+				},
 				cache_control: { type: "ephemeral" },
 			},
 		]);
+		// No flat custom tool name reaches the OAuth wire.
+		expect(JSON.stringify(addition.after)).not.toContain('"firecrawl_search"');
 		expect(JSON.stringify(addition.after.messages)).toContain(
 			"Read cli .md files about cli packages and the cli itself.",
 		);
@@ -251,14 +275,12 @@ describe("Pi 0.86 native Anthropic transcript updates", () => {
 			timestamp: 4,
 		});
 		const removal = await runtime.capture(context);
-		expect(changes(removal.after).map((block) => [block.type, block.tool?.name])).toEqual([
+		expect(changes(removal.after).map((block) => [block.type, changeName(block)])).toEqual([
 			["tool_addition", FIRECRAWL_ALIAS],
 			["tool_removal", EXA_ALIAS],
 		]);
-		for (const block of changes(removal.after)) {
-			expect(removal.after.tools.some((value) => value.name === block.tool?.name)).toBe(true);
-		}
 		expect(removal.after.tools).toEqual(addition.after.tools);
+		expect(JSON.stringify(removal.after)).not.toMatch(/"(web_search_exa|firecrawl_search)"/);
 	});
 
 	it("keeps a selected alias available when its flat source is removed and restored", async () => {
@@ -294,6 +316,139 @@ describe("Pi 0.86 native Anthropic transcript updates", () => {
 		expect(changes((await runtime.capture(context)).after)).toMatchObject([
 			{ type: "tool_removal", tool: { name: EXA_ALIAS } },
 		]);
+	});
+
+	it("keeps an inline redefinition of an active tool under its alias with the source schema", async () => {
+		const runtime = await createRuntime();
+		const context: Context = {
+			messages: [
+				{ role: "system", content: "Initial", toolsAdded: runtime.activeTools(), timestamp: 0 },
+				{ role: "user", content: "First", timestamp: 1 },
+			],
+		};
+		const initial = await runtime.capture(context);
+		const updated = { ...tool("web_search_exa"), description: "Updated exa description" };
+		// Pi adds a redefined tool again under the same name, without a removal.
+		// The alias stub's schema can still be the previous one.
+		context.messages.push({
+			role: "system",
+			content: "",
+			toolsAdded: [tool(EXA_ALIAS), updated],
+			timestamp: 2,
+		});
+		const { before, after } = await runtime.capture(context);
+		expect(changes(before).map(changeName)).toEqual([EXA_ALIAS, "web_search_exa"]);
+		expect(after.tools).toEqual(initial.after.tools);
+		expect(changes(after)).toEqual([
+			{
+				type: "tool_addition",
+				tool: {
+					type: "tool_definition",
+					definition: expect.objectContaining({ name: EXA_ALIAS, description: "Updated exa description" }),
+				},
+				cache_control: { type: "ephemeral" },
+			},
+		]);
+	});
+
+	it("keeps the flat source schema when its alias definition follows it", () => {
+		_test.refreshAliasMap([], [["web_search_exa", EXA_ALIAS]]);
+		const definition = (name: string, description: string) => ({
+			type: "tool_addition",
+			tool: { type: "tool_definition", definition: { name, description, input_schema: {} } },
+		});
+		const result = _test.transformPayload(
+			{
+				tools: [{ name: "Read", input_schema: {} }],
+				messages: [
+					{
+						role: "system",
+						content: [definition("web_search_exa", "Current"), definition(EXA_ALIAS, "Stale")],
+					},
+				],
+			},
+			{ aliasTools: true },
+		);
+		expect(result.messages).toEqual([{ role: "system", content: [definition(EXA_ALIAS, "Current")] }]);
+	});
+
+	it("drops inline definitions of unaliased flat tools and moves their cache breakpoint", () => {
+		const cache = { type: "ephemeral", ttl: "1h" };
+		const user = { role: "user", content: [{ type: "text", text: "First" }] };
+		const addition = {
+			type: "tool_addition",
+			tool: { type: "tool_definition", definition: { name: "unknown_flat", input_schema: {} } },
+			cache_control: cache,
+		};
+		const result = _test.transformPayload(
+			{ tools: [{ name: "Read", input_schema: {} }], messages: [user, { role: "system", content: [addition] }] },
+			{ aliasTools: true },
+		);
+		expect(result.messages).toEqual([{ ...user, content: [{ type: "text", text: "First", cache_control: cache }] }]);
+	});
+
+	it("drops aliases whose active source Pi left undeclared, keeping user-selected aliases", () => {
+		_test.refreshAliasMap(
+			[],
+			[
+				["web_search_exa", EXA_ALIAS],
+				["firecrawl_search", FIRECRAWL_ALIAS],
+			],
+		);
+		_test.registeredMcpAliases.add(EXA_ALIAS);
+		_test.registeredMcpAliases.add(FIRECRAWL_ALIAS);
+		const cache = { type: "ephemeral" };
+		const inline = (name: string) => ({
+			type: "tool_addition",
+			tool: { type: "tool_definition", definition: { name, input_schema: {} } },
+		});
+		const payload = {
+			tools: [
+				{ name: "Read", input_schema: {} },
+				{ name: EXA_ALIAS, input_schema: {}, cache_control: cache },
+			],
+			messages: [{ role: "system", content: [inline(FIRECRAWL_ALIAS)] }],
+		};
+		// Both sources are active but undeclared, as when codemode-only mode hides them.
+		const hidden = _test.transformPayload(payload, {
+			aliasTools: true,
+			activeToolNames: ["read", "web_search_exa", "firecrawl_search"],
+		});
+		expect(hidden.tools).toEqual([{ name: "Read", input_schema: {}, cache_control: cache }]);
+		expect(hidden.messages).toEqual([]);
+
+		// With the sources inactive, the aliases are the user's own selection.
+		const selected = _test.transformPayload(payload, {
+			aliasTools: true,
+			activeToolNames: ["read", EXA_ALIAS, FIRECRAWL_ALIAS],
+		});
+		expect(selected.tools).toEqual(payload.tools);
+		expect(selected.messages).toEqual(payload.messages);
+	});
+
+	it("remaps tool_choice to a tool that was only defined inline", () => {
+		_test.refreshAliasMap([], [["firecrawl_search", FIRECRAWL_ALIAS]]);
+		_test.registeredMcpAliases.add(FIRECRAWL_ALIAS);
+		const result = _test.transformPayload(
+			{
+				tools: [{ name: "Read", input_schema: {} }],
+				tool_choice: { type: "tool", name: "firecrawl_search" },
+				messages: [
+					{
+						role: "system",
+						content: [
+							{
+								type: "tool_addition",
+								tool: { type: "tool_definition", definition: { name: "firecrawl_search", input_schema: {} } },
+							},
+						],
+					},
+				],
+			},
+			{ aliasTools: true },
+		);
+		expect(result.tool_choice).toEqual({ type: "tool", name: FIRECRAWL_ALIAS });
+		expect(JSON.stringify(result)).not.toContain('"firecrawl_search"');
 	});
 
 	it("keeps an initially active alias non-deferred when its flat source is declared later", async () => {
@@ -391,7 +546,7 @@ describe("Pi 0.86 native Anthropic transcript updates", () => {
 			],
 		};
 		const original = structuredClone(raw);
-		const result = _test.transformPayload(raw, false);
+		const result = _test.transformPayload(raw, { aliasTools: true });
 		expect(result.messages).toEqual([
 			{ ...preceding, content: [{ ...block, cache_control: cache }] },
 			assistant,
@@ -417,7 +572,7 @@ describe("Pi 0.86 native Anthropic transcript updates", () => {
 					},
 				],
 			},
-			false,
+			{ aliasTools: true },
 		);
 		expect(result.messages).toEqual([
 			{ role: "system", content: [{ ...first, cache_control: cache }] },
@@ -441,7 +596,7 @@ describe("Pi 0.86 native Anthropic transcript updates", () => {
 					})),
 				],
 			},
-			false,
+			{ aliasTools: true },
 		);
 		expect(result.messages).toEqual([message]);
 	});
@@ -450,7 +605,10 @@ describe("Pi 0.86 native Anthropic transcript updates", () => {
 		const user = { role: "user", content: "First" };
 		const change = { type: "tool_addition", tool: { type: "tool_reference", name: "unknown_flat" } };
 		expect(
-			_test.transformPayload({ tools: [], messages: [user, { role: "system", content: [change] }] }, false).messages,
+			_test.transformPayload(
+				{ tools: [], messages: [user, { role: "system", content: [change] }] },
+				{ aliasTools: true },
+			).messages,
 		).toEqual([user]);
 		const assistant = { role: "assistant", content: [{ type: "thinking", thinking: "Reasoning", signature: "sig" }] };
 		const effort = { role: "system", content: [], output_config: { effort: "high" } };
@@ -465,7 +623,7 @@ describe("Pi 0.86 native Anthropic transcript updates", () => {
 						user,
 					],
 				},
-				false,
+				{ aliasTools: true },
 			).messages,
 		).toEqual([assistant, effort, user]);
 	});
@@ -490,7 +648,7 @@ describe("Pi 0.86 native Anthropic transcript updates", () => {
 					},
 				],
 			},
-			false,
+			{ aliasTools: true },
 		);
 		expect(result.messages).toEqual([
 			{
@@ -550,7 +708,7 @@ describe("Pi 0.86 native Anthropic transcript updates", () => {
 					{ role: "system", content: [], output_config: { effort: "high" } },
 				],
 			},
-			false,
+			{ aliasTools: true },
 		);
 		expect(result.messages).toEqual([
 			{
@@ -579,7 +737,7 @@ describe("Pi 0.86 native Anthropic transcript updates", () => {
 				],
 				messages: [],
 			},
-			false,
+			{ aliasTools: true },
 		);
 		expect(result.tools).toEqual([placeholder]);
 	});
@@ -610,7 +768,7 @@ describe("Pi 0.86 native Anthropic transcript updates", () => {
 					},
 				],
 			},
-			false,
+			{ aliasTools: true },
 		);
 		expect((result.messages as unknown[]).slice(0, 2)).toEqual(messages);
 		expect((result.messages as unknown[]).at(-1)).toEqual({

@@ -1,7 +1,7 @@
 {
   "name": "@benvargas/pi-openai-verbosity",
-  "version": "1.1.2",
-  "description": "Per-model OpenAI Codex text verbosity overrides for pi",
+  "version": "1.2.0",
+  "description": "Per-model OpenAI and OpenAI Codex text verbosity overrides for pi",
   "keywords": [
     "pi",
     "pi-package",

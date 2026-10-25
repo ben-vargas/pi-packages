@@ -240,8 +240,10 @@ describe("pi-openai-verbosity", () => {
 			const beforeProviderRequest = getRegisteredHandler(mockPi, "before_provider_request");
 
 			for (const [modelKey, verbosity] of Object.entries(_test.DEFAULT_MODEL_VERBOSITY)) {
-				const id = modelKey.slice("openai-codex/".length);
-				const { ctx } = createMockContext({ provider: "openai-codex", id } as ExtensionContext["model"], cwd);
+				const slashIndex = modelKey.indexOf("/");
+				const provider = modelKey.slice(0, slashIndex);
+				const id = modelKey.slice(slashIndex + 1);
+				const { ctx } = createMockContext({ provider, id } as ExtensionContext["model"], cwd);
 				expect(
 					beforeProviderRequest(
 						{ type: "before_provider_request", payload: { input: "hello" } } as BeforeProviderRequestEvent,

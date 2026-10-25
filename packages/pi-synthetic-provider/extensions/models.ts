@@ -10,15 +10,23 @@ import type { SyntheticModel, SyntheticModelsResponse } from "./types.js";
 export const GLM_5_3_MODEL_ID = "hf:zai-org/GLM-5.3";
 export const GLM_5_3_FLASH_MODEL_ID = "hf:zai-org/GLM-5.3-Flash";
 export const DEEPSEEK_V4_1_FLASH_MODEL_ID = "hf:deepseek-ai/DeepSeek-V4.1-Flash";
+export const DEEPSEEK_V4_1_FLASH_1017_MODEL_ID = "hf:deepseek-ai/DeepSeek-V4.1-Flash-1017";
 export const GLM_4_7_FLASH_MODEL_ID = "hf:zai-org/GLM-4.7-Flash";
 export const GPT_OSS_120B_MODEL_ID = "hf:openai/gpt-oss-120b";
 export const KIMI_K3_MODEL_ID = "hf:moonshotai/Kimi-K3";
 export const QWEN_3_8_27B_MODEL_ID = "hf:Qwen/Qwen3.8-27B";
+export const INFINITE_SMALL_VISION_MODEL_ID = "infinite:small:vision";
 export const NEMOTRON_3_SUPER_MODEL_ID = "hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4";
 
-type SyntheticModelOverrides = Pick<ProviderModelConfig, "compat"> &
-	Partial<Pick<ProviderModelConfig, "reasoning" | "thinkingLevelMap">>;
-type SyntheticThinkingLevel = keyof NonNullable<ProviderModelConfig["thinkingLevelMap"]>;
+/**
+ * Chat entries of pi's provider model config. Pi 0.99 widened
+ * `ProviderModelConfig` into a union that also covers image and classifier
+ * models; Synthetic only serves chat models, and those entries omit `type`.
+ */
+export type SyntheticModelConfig = Exclude<ProviderModelConfig, { type: "image" | "classifier" }>;
+type SyntheticModelOverrides = Pick<SyntheticModelConfig, "compat"> &
+	Partial<Pick<SyntheticModelConfig, "reasoning" | "thinkingLevelMap">>;
+type SyntheticThinkingLevel = keyof NonNullable<SyntheticModelConfig["thinkingLevelMap"]>;
 type SyntheticReasoningEffort = "none" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 const REASONING_EFFORT_LEVELS: Record<SyntheticReasoningEffort, SyntheticThinkingLevel> = {
@@ -35,7 +43,7 @@ const REASONING_EFFORT_LEVELS: Record<SyntheticReasoningEffort, SyntheticThinkin
 function createReasoningOverrides(efforts: readonly SyntheticReasoningEffort[]): SyntheticModelOverrides;
 function createReasoningOverrides(efforts: readonly string[]): SyntheticModelOverrides | undefined;
 function createReasoningOverrides(efforts: readonly string[]): SyntheticModelOverrides | undefined {
-	const thinkingLevelMap: NonNullable<ProviderModelConfig["thinkingLevelMap"]> = {
+	const thinkingLevelMap: NonNullable<SyntheticModelConfig["thinkingLevelMap"]> = {
 		off: null,
 		minimal: null,
 		low: null,
@@ -74,11 +82,12 @@ function createReasoningOverrides(efforts: readonly string[]): SyntheticModelOve
  * Kimi K3, GLM 5.3, and GLM 5.3-Flash always reason and only accept `low`,
  * `high`, and `max`, so `off` is deliberately unavailable. Qwen 3.8-27B has no
  * `none` either and tops out at `xhigh`, so `off`, `high`, and `max` are
- * unavailable. DeepSeek V4.1-Flash skips `medium`.
+ * unavailable. DeepSeek V4.1-Flash and its 10/17 snapshot skip `medium`.
  */
 const GLM_5_3_REASONING_OVERRIDES = createReasoningOverrides(["low", "high", "max"]);
 const GLM_5_3_FLASH_REASONING_OVERRIDES = createReasoningOverrides(["low", "high", "max"]);
 const DEEPSEEK_V4_1_FLASH_REASONING_OVERRIDES = createReasoningOverrides(["none", "low", "high", "xhigh", "max"]);
+const DEEPSEEK_V4_1_FLASH_1017_REASONING_OVERRIDES = createReasoningOverrides(["none", "low", "high", "xhigh", "max"]);
 const GLM_4_7_FLASH_REASONING_OVERRIDES = createReasoningOverrides(["none", "low", "medium", "high"]);
 const GPT_OSS_120B_REASONING_OVERRIDES = createReasoningOverrides(["none", "low", "medium", "high"]);
 const KIMI_K3_REASONING_OVERRIDES = createReasoningOverrides(["low", "high", "max"]);
@@ -94,6 +103,7 @@ const REASONING_OVERRIDES = new Map<string, SyntheticModelOverrides>([
 	[GLM_5_3_MODEL_ID, GLM_5_3_REASONING_OVERRIDES],
 	[GLM_5_3_FLASH_MODEL_ID, GLM_5_3_FLASH_REASONING_OVERRIDES],
 	[DEEPSEEK_V4_1_FLASH_MODEL_ID, DEEPSEEK_V4_1_FLASH_REASONING_OVERRIDES],
+	[DEEPSEEK_V4_1_FLASH_1017_MODEL_ID, DEEPSEEK_V4_1_FLASH_1017_REASONING_OVERRIDES],
 	[GLM_4_7_FLASH_MODEL_ID, GLM_4_7_FLASH_REASONING_OVERRIDES],
 	[GPT_OSS_120B_MODEL_ID, GPT_OSS_120B_REASONING_OVERRIDES],
 	[KIMI_K3_MODEL_ID, KIMI_K3_REASONING_OVERRIDES],
@@ -195,7 +205,7 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs?: numb
 export async function fetchSyntheticModels(
 	apiKey?: string,
 	options: FetchSyntheticModelsOptions = {},
-): Promise<ProviderModelConfig[]> {
+): Promise<SyntheticModelConfig[]> {
 	try {
 		const headers: Record<string, string> = {
 			Accept: "application/json",
@@ -214,7 +224,7 @@ export async function fetchSyntheticModels(
 		}
 
 		const data = (await response.json()) as SyntheticModelsResponse;
-		const models: ProviderModelConfig[] = [];
+		const models: SyntheticModelConfig[] = [];
 
 		for (const model of data.data) {
 			// Only include always-on models.
@@ -278,25 +288,26 @@ export async function fetchSyntheticModels(
 /**
  * Fallback models if API fetch fails.
  * Data sourced from: authenticated GET https://api.synthetic.new/openai/v1/models
- * Model metadata last updated: 2026-10-13
- * Reasoning efforts last updated: 2026-10-13
+ * Model metadata last updated: 2026-10-25
+ * Reasoning efforts last updated: 2026-10-25
  *
  * Mirrors the live `always_on` catalog. The `syn:*` permalinks are stable
  * aliases Synthetic re-points as models rotate: `syn:large:vision` resolves to
- * Kimi K3, `syn:large:text` to DeepSeek V4.1-Flash, `syn:small:text` to GLM
- * 4.7-Flash, and `syn:small:vision` to Qwen 3.8-27B.
+ * Kimi K3, `syn:large:text` and `syn:small:vision` to DeepSeek V4.1-Flash 10/17,
+ * and `syn:small:text` to GLM 4.7-Flash. `infinite:small:vision` is a
+ * zero-priced route that currently also serves DeepSeek V4.1-Flash 10/17.
  *
  * Pricing format: $/million tokens. `cacheRead` tracks the catalog's
  * `input_cache_reads` rate, which is well below the input rate on every model.
  *
- * The `syn:*` entries deliberately carry no `thinkingLevelMap`. Offline there is
+ * The `syn:*` and `infinite:*` entries deliberately carry no `thinkingLevelMap`. Offline there is
  * no catalog row naming the permalink's current target, so any effort map here
  * would be a guess that goes stale the moment Synthetic re-points the alias — and
  * a wrong map fails every request with HTTP 400 rather than merely running at the
  * default effort. Live discovery resolves permalinks properly via
  * `hugging_face_id`; see `getSyntheticModelOverrides`.
  */
-export function getFallbackModels(): ProviderModelConfig[] {
+export function getFallbackModels(): SyntheticModelConfig[] {
 	return [
 		{
 			id: "syn:large:text",
@@ -349,12 +360,27 @@ export function getFallbackModels(): ProviderModelConfig[] {
 			reasoning: true,
 			input: ["text", "image"],
 			cost: {
-				input: 0.45,
-				output: 2.2,
-				cacheRead: 0.09,
+				input: 0.6,
+				output: 1.2,
+				cacheRead: 0.03,
 				cacheWrite: 0,
 			},
-			contextWindow: 262144,
+			contextWindow: 524288,
+			maxTokens: 65536,
+			compat: SYNTHETIC_COMPAT,
+		},
+		{
+			id: INFINITE_SMALL_VISION_MODEL_ID,
+			name: "infinite:small:vision",
+			reasoning: true,
+			input: ["text", "image"],
+			cost: {
+				input: 0,
+				output: 0,
+				cacheRead: 0,
+				cacheWrite: 0,
+			},
+			contextWindow: 524288,
 			maxTokens: 65536,
 			compat: SYNTHETIC_COMPAT,
 		},
@@ -417,6 +443,21 @@ export function getFallbackModels(): ProviderModelConfig[] {
 			contextWindow: 524288,
 			maxTokens: 65536,
 			...getSyntheticModelOverrides(DEEPSEEK_V4_1_FLASH_MODEL_ID),
+		},
+		{
+			id: DEEPSEEK_V4_1_FLASH_1017_MODEL_ID,
+			name: "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+			reasoning: true,
+			input: ["text", "image"],
+			cost: {
+				input: 0.6,
+				output: 1.2,
+				cacheRead: 0.03,
+				cacheWrite: 0,
+			},
+			contextWindow: 524288,
+			maxTokens: 65536,
+			...getSyntheticModelOverrides(DEEPSEEK_V4_1_FLASH_1017_MODEL_ID),
 		},
 		{
 			id: KIMI_K3_MODEL_ID,

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
-import type { ExtensionAPI, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import syntheticProvider, { getFallbackModels } from "../extensions/index.js";
+import syntheticProvider, { getFallbackModels, type SyntheticModelConfig } from "../extensions/index.js";
 
 const GLM_5_3_MODEL_ID = "hf:zai-org/GLM-5.3";
 const GLM_5_3_FLASH_MODEL_ID = "hf:zai-org/GLM-5.3-Flash";
@@ -161,7 +161,7 @@ describe("pi-synthetic-provider", () => {
 		const mockPi = createMockPi();
 		await syntheticProvider(mockPi as unknown as ExtensionAPI);
 
-		const models = mockPi.registerProvider.mock.calls[0]?.[1].models as ProviderModelConfig[];
+		const models = mockPi.registerProvider.mock.calls[0]?.[1].models as SyntheticModelConfig[];
 
 		for (const id of REASONING_MODEL_IDS) {
 			const model = models.find((candidate) => candidate.id === id);
@@ -195,7 +195,7 @@ describe("pi-synthetic-provider", () => {
 		const mockPi = createMockPi();
 		await syntheticProvider(mockPi as unknown as ExtensionAPI);
 
-		const models = mockPi.registerProvider.mock.calls[0]?.[1].models as ProviderModelConfig[];
+		const models = mockPi.registerProvider.mock.calls[0]?.[1].models as SyntheticModelConfig[];
 		expect(models[0]?.thinkingLevelMap).toEqual({
 			off: null,
 			minimal: null,
@@ -232,7 +232,7 @@ describe("pi-synthetic-provider", () => {
 		const mockPi = createMockPi();
 		await syntheticProvider(mockPi as unknown as ExtensionAPI);
 
-		const models = mockPi.registerProvider.mock.calls[0]?.[1].models as ProviderModelConfig[];
+		const models = mockPi.registerProvider.mock.calls[0]?.[1].models as SyntheticModelConfig[];
 		expect(models[0]).toMatchObject({
 			reasoning: true,
 			compat: { supportsReasoningEffort: true },
@@ -277,7 +277,7 @@ describe("pi-synthetic-provider", () => {
 		const mockPi = createMockPi();
 		await syntheticProvider(mockPi as unknown as ExtensionAPI);
 
-		const models = mockPi.registerProvider.mock.calls[0]?.[1].models as ProviderModelConfig[];
+		const models = mockPi.registerProvider.mock.calls[0]?.[1].models as SyntheticModelConfig[];
 		for (const [id, huggingFaceId] of permalinks) {
 			const model = models.find((candidate) => candidate.id === id);
 			expect(model).toMatchObject({ reasoning: true, compat: { supportsReasoningEffort: true } });
@@ -317,7 +317,7 @@ describe("pi-synthetic-provider", () => {
 		const mockPi = createMockPi();
 		await syntheticProvider(mockPi as unknown as ExtensionAPI);
 
-		const models = mockPi.registerProvider.mock.calls[0]?.[1].models as ProviderModelConfig[];
+		const models = mockPi.registerProvider.mock.calls[0]?.[1].models as SyntheticModelConfig[];
 		for (const row of rows) {
 			const model = models.find((candidate) => candidate.id === row.id);
 			expect(model).toMatchObject({ compat: { supportsReasoningEffort: false } });
@@ -350,7 +350,7 @@ describe("pi-synthetic-provider", () => {
 		const mockPi = createMockPi();
 		await syntheticProvider(mockPi as unknown as ExtensionAPI);
 
-		const models = mockPi.registerProvider.mock.calls[0]?.[1].models as ProviderModelConfig[];
+		const models = mockPi.registerProvider.mock.calls[0]?.[1].models as SyntheticModelConfig[];
 		const model = models.find((candidate) => candidate.id === "hf:example/other-model");
 		expect(model).toMatchObject({ compat: { supportsReasoningEffort: false } });
 		expect(model?.thinkingLevelMap).toBeUndefined();
@@ -378,7 +378,7 @@ describe("pi-synthetic-provider", () => {
 		const mockPi = createMockPi();
 		await syntheticProvider(mockPi as unknown as ExtensionAPI);
 
-		const models = mockPi.registerProvider.mock.calls[0]?.[1].models as ProviderModelConfig[];
+		const models = mockPi.registerProvider.mock.calls[0]?.[1].models as SyntheticModelConfig[];
 		for (const model of models) {
 			expect(model).toMatchObject({ compat: { supportsReasoningEffort: false } });
 			expect(model?.thinkingLevelMap).toBeUndefined();
@@ -407,7 +407,7 @@ describe("pi-synthetic-provider", () => {
 		const mockPi = createMockPi();
 		await syntheticProvider(mockPi as unknown as ExtensionAPI);
 
-		const models = mockPi.registerProvider.mock.calls[0]?.[1].models as ProviderModelConfig[];
+		const models = mockPi.registerProvider.mock.calls[0]?.[1].models as SyntheticModelConfig[];
 		for (const id of REASONING_MODEL_IDS) {
 			expect(models.find((model) => model.id === id)).toMatchObject({
 				reasoning: true,
@@ -522,7 +522,7 @@ describe("pi-synthetic-provider", () => {
 		const mockPi = createMockPi();
 		await syntheticProvider(mockPi as unknown as ExtensionAPI);
 
-		const models = mockPi.registerProvider.mock.calls[0]?.[1].models as ProviderModelConfig[];
+		const models = mockPi.registerProvider.mock.calls[0]?.[1].models as SyntheticModelConfig[];
 		expect(models).toEqual(getFallbackModels());
 		expect(models.some((model) => model.id === "off-model")).toBe(false);
 	});

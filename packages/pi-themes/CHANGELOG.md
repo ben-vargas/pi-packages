@@ -7,6 +7,11 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-10-25
+
+### Fixed
+- Pointed each theme's `$schema` at `https://pi.dev/schemas/theme.schema.json`. Pi 1.2.0 moved the published theme schema there, and the old GitHub source path no longer exists. All themes validate with Pi 1.4.0's theme loader.
+
 ## [1.2.0] - 2026-08-11
 
 ### Added
