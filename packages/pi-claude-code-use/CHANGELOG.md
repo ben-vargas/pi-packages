@@ -7,7 +7,11 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.2.2] - 2026-10-25
+## [3.0.0] - 2026-10-25
+
+### Changed
+- **Tool aliasing is now opt-in.** Live tests against Anthropic's OAuth endpoint on 2026-10-25 (Pi 1.4.0) showed the system prompt phrases `pi itself` and `pi packages` are what route requests to extra usage; flat custom tool names are accepted. By default the extension now only rewrites the system prompt and leaves tools, `tool_choice`, transcript tool changes, and tool calls untouched. Enable the previous MCP-alias behavior with `PI_CLAUDE_CODE_USE_TOOL_ALIASES=1` or `"toolAliasing": true` in `pi-claude-code-use.json`; `toolAliases` entries apply only while it is enabled.
+- Split the extension into modules: the prompt rewrite (`extensions/prompt.ts`) and the opt-in aliasing (`extensions/tool-aliases/`: registry, payload transform, rendering, and shared state).
 
 ### Fixed
 - Support Pi 1.x inline tool definitions. Pi 1.x keeps the top-level Anthropic tool list fixed and defines tools added mid-conversation by value in `tool_addition` blocks (`tool_definition`). These were not recognized, so flat custom tool names (for example `web_search_exa`) reached the OAuth endpoint without their `mcp__` aliases. Inline definitions now follow the top-level rules: flat tools are renamed to their aliases, flat+alias pairs collapse to one definition using the flat source's schema, and unaliased flat tools are dropped with their cache breakpoint relocated. Removals and `tool_choice` resolve against tools that were only defined inline.

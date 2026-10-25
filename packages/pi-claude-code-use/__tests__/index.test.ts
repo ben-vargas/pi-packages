@@ -83,6 +83,14 @@ function registerAliasesIsolated(pi: ReturnType<typeof createMockPi>, tempDir: s
 	});
 }
 
+// Tool aliasing is opt-in; these suites exercise it, so enable it per test.
+beforeEach(() => {
+	vi.stubEnv("PI_CLAUDE_CODE_USE_TOOL_ALIASES", "1");
+});
+afterEach(() => {
+	vi.unstubAllEnvs();
+});
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -163,7 +171,7 @@ describe("pi-claude-code-use", () => {
 				system: "Pi docs (read about pi itself and its SDK):",
 				messages: [{ role: "user", content: "hi" }],
 			},
-			false,
+			{ aliasTools: true },
 		);
 
 		expect(result.system).toBe("Pi docs (read about the cli itself and its SDK):");
@@ -186,7 +194,7 @@ describe("pi-claude-code-use", () => {
 				],
 				messages: [],
 			},
-			false,
+			{ aliasTools: true },
 		);
 
 		expect(result.system).toEqual([
@@ -210,7 +218,7 @@ describe("pi-claude-code-use", () => {
 				system: [{ type: "text", text: "about pi itself" }, guardBlock],
 				messages: [],
 			},
-			false,
+			{ aliasTools: true },
 		);
 
 		expect(result.system).toEqual([{ type: "text", text: "about the cli itself" }, guardBlock]);
@@ -248,7 +256,7 @@ describe("pi-claude-code-use", () => {
 				],
 				messages: [],
 			},
-			false,
+			{ aliasTools: true },
 		);
 
 		const toolIds = (result.tools as { name?: string; type?: string }[]).map((t) => t.name ?? t.type);
@@ -270,7 +278,7 @@ describe("pi-claude-code-use", () => {
 				],
 				messages: [],
 			},
-			false,
+			{ aliasTools: true },
 		);
 
 		expect((result.tools as { name: string }[]).map((t) => t.name)).toEqual(["mcp__exa_mcp__web_search_exa"]);
@@ -302,7 +310,7 @@ describe("pi-claude-code-use", () => {
 				],
 				messages: [],
 			},
-			false,
+			{ aliasTools: true },
 		);
 
 		expect(result.tools).toEqual([
@@ -322,7 +330,7 @@ describe("pi-claude-code-use", () => {
 				tools: [{ name: "web_search_exa", description: "Orphan", input_schema: {} }],
 				messages: [],
 			},
-			false,
+			{ aliasTools: true },
 		);
 
 		expect(result.tools).toEqual([]);
@@ -330,17 +338,14 @@ describe("pi-claude-code-use", () => {
 
 	it("passes all tools through unchanged when filter is disabled", () => {
 		_test.refreshAliasMap([], [["web_search_exa", "mcp__exa_mcp__web_search_exa"]]);
-		const result = _test.transformPayload(
-			{
-				tools: [
-					{ name: "web_search_exa", description: "Flat", input_schema: {} },
-					{ name: "mcp__exa_mcp__web_search_exa", description: "Alias", input_schema: {} },
-					{ name: "totally_unknown", description: "Custom ext", input_schema: {} },
-				],
-				messages: [],
-			},
-			true,
-		);
+		const result = _test.transformPayload({
+			tools: [
+				{ name: "web_search_exa", description: "Flat", input_schema: {} },
+				{ name: "mcp__exa_mcp__web_search_exa", description: "Alias", input_schema: {} },
+				{ name: "totally_unknown", description: "Custom ext", input_schema: {} },
+			],
+			messages: [],
+		});
 
 		expect((result.tools as { name: string }[]).map((t) => t.name)).toEqual([
 			"web_search_exa",
@@ -364,7 +369,7 @@ describe("pi-claude-code-use", () => {
 				],
 				messages: [],
 			},
-			false,
+			{ aliasTools: true },
 		);
 
 		expect(result.tool_choice).toEqual({ type: "tool", name: "mcp__exa_mcp__web_search_exa" });
@@ -377,7 +382,7 @@ describe("pi-claude-code-use", () => {
 				tools: [{ name: "unknown_tool", input_schema: {} }],
 				messages: [],
 			},
-			false,
+			{ aliasTools: true },
 		);
 
 		expect(result.tool_choice).toBeUndefined();
@@ -396,7 +401,7 @@ describe("pi-claude-code-use", () => {
 				tools: [{ name: "Read", description: "Read files", input_schema: {} }],
 				messages: [],
 			},
-			false,
+			{ aliasTools: true },
 		);
 
 		expect(result.tool_choice).toEqual({ type: "tool", name: "Read" });
@@ -428,7 +433,7 @@ describe("pi-claude-code-use", () => {
 					{ name: "mcp__exa_mcp__web_search_exa", input_schema: {} },
 				],
 			},
-			false,
+			{ aliasTools: true },
 		);
 
 		expect(result.messages).toEqual([
@@ -458,7 +463,7 @@ describe("pi-claude-code-use", () => {
 				],
 				tools: [{ name: "web_search_exa", input_schema: {} }],
 			},
-			false,
+			{ aliasTools: true },
 		);
 
 		expect(result.messages).toEqual([
@@ -500,7 +505,7 @@ describe("pi-claude-code-use", () => {
 					{ name: "unknown_flat", description: "Dropped", input_schema: {} },
 				],
 			},
-			false,
+			{ aliasTools: true },
 		);
 
 		expect(result.system).toEqual([
@@ -529,23 +534,20 @@ describe("pi-claude-code-use", () => {
 
 	it("passes tools, tool_choice, and messages through unchanged with filter disabled", () => {
 		_test.refreshAliasMap([], [["web_search_exa", "mcp__exa_mcp__web_search_exa"]]);
-		const result = _test.transformPayload(
-			{
-				messages: [
-					{
-						role: "assistant",
-						content: [{ type: "tool_use", id: "toolu_x", name: "web_search_exa", input: { q: "pi" } }],
-					},
-				],
-				tool_choice: { type: "tool", name: "web_search_exa" },
-				tools: [
-					{ name: "web_search_exa", description: "Flat", input_schema: {} },
-					{ name: "mcp__exa_mcp__web_search_exa", description: "Alias", input_schema: {} },
-					{ name: "custom_ext_tool", description: "Custom", input_schema: {} },
-				],
-			},
-			true,
-		);
+		const result = _test.transformPayload({
+			messages: [
+				{
+					role: "assistant",
+					content: [{ type: "tool_use", id: "toolu_x", name: "web_search_exa", input: { q: "pi" } }],
+				},
+			],
+			tool_choice: { type: "tool", name: "web_search_exa" },
+			tools: [
+				{ name: "web_search_exa", description: "Flat", input_schema: {} },
+				{ name: "mcp__exa_mcp__web_search_exa", description: "Alias", input_schema: {} },
+				{ name: "custom_ext_tool", description: "Custom", input_schema: {} },
+			],
+		});
 
 		expect((result.tools as { name: string }[]).map((t) => t.name)).toEqual([
 			"web_search_exa",
@@ -1775,7 +1777,7 @@ describe("pi-claude-code-use", () => {
 						tool_choice: { type: "tool", name: "subagent" },
 						messages: [{ role: "assistant", content: [{ type: "tool_use", name: "subagent" }] }],
 					},
-					false,
+					{ aliasTools: true },
 				);
 				expect(withAlias.tool_choice).toEqual({ type: "tool", name: "mcp__subagent__run" });
 				expect((withAlias.messages as Array<{ content: Array<{ name: string }> }>)[0]?.content[0]?.name).toBe(
@@ -1791,7 +1793,7 @@ describe("pi-claude-code-use", () => {
 						tool_choice: { type: "tool", name: "subagent" },
 						messages: [{ role: "assistant", content: [{ type: "tool_use", name: "subagent" }] }],
 					},
-					false,
+					{ aliasTools: true },
 				);
 				expect(withoutAlias.tool_choice).toBeUndefined();
 				expect((withoutAlias.messages as Array<{ content: Array<{ name: string }> }>)[0]?.content[0]?.name).toBe(

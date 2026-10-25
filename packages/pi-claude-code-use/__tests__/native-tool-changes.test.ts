@@ -114,6 +114,14 @@ function changes(payload: WirePayload) {
 	);
 }
 
+// Tool aliasing is opt-in; these suites exercise it, so enable it per test.
+beforeEach(() => {
+	vi.stubEnv("PI_CLAUDE_CODE_USE_TOOL_ALIASES", "1");
+});
+afterEach(() => {
+	vi.unstubAllEnvs();
+});
+
 beforeEach(() => {
 	scratch = mkdtempSync(join(tmpdir(), "pi-086-claude-"));
 	vi.stubEnv("PI_CODING_AGENT_DIR", join(scratch, "agent"));
@@ -359,7 +367,7 @@ describe("Pi native Anthropic transcript updates", () => {
 					},
 				],
 			},
-			false,
+			{ aliasTools: true },
 		);
 		expect(result.messages).toEqual([{ role: "system", content: [definition(EXA_ALIAS, "Current")] }]);
 	});
@@ -374,7 +382,7 @@ describe("Pi native Anthropic transcript updates", () => {
 		};
 		const result = _test.transformPayload(
 			{ tools: [{ name: "Read", input_schema: {} }], messages: [user, { role: "system", content: [addition] }] },
-			false,
+			{ aliasTools: true },
 		);
 		expect(result.messages).toEqual([{ ...user, content: [{ type: "text", text: "First", cache_control: cache }] }]);
 	});
@@ -402,12 +410,18 @@ describe("Pi native Anthropic transcript updates", () => {
 			messages: [{ role: "system", content: [inline(FIRECRAWL_ALIAS)] }],
 		};
 		// Both sources are active but undeclared, as when codemode-only mode hides them.
-		const hidden = _test.transformPayload(payload, false, ["read", "web_search_exa", "firecrawl_search"]);
+		const hidden = _test.transformPayload(payload, {
+			aliasTools: true,
+			activeToolNames: ["read", "web_search_exa", "firecrawl_search"],
+		});
 		expect(hidden.tools).toEqual([{ name: "Read", input_schema: {}, cache_control: cache }]);
 		expect(hidden.messages).toEqual([]);
 
 		// With the sources inactive, the aliases are the user's own selection.
-		const selected = _test.transformPayload(payload, false, ["read", EXA_ALIAS, FIRECRAWL_ALIAS]);
+		const selected = _test.transformPayload(payload, {
+			aliasTools: true,
+			activeToolNames: ["read", EXA_ALIAS, FIRECRAWL_ALIAS],
+		});
 		expect(selected.tools).toEqual(payload.tools);
 		expect(selected.messages).toEqual(payload.messages);
 	});
@@ -431,7 +445,7 @@ describe("Pi native Anthropic transcript updates", () => {
 					},
 				],
 			},
-			false,
+			{ aliasTools: true },
 		);
 		expect(result.tool_choice).toEqual({ type: "tool", name: FIRECRAWL_ALIAS });
 		expect(JSON.stringify(result)).not.toContain('"firecrawl_search"');
@@ -532,7 +546,7 @@ describe("Pi native Anthropic transcript updates", () => {
 			],
 		};
 		const original = structuredClone(raw);
-		const result = _test.transformPayload(raw, false);
+		const result = _test.transformPayload(raw, { aliasTools: true });
 		expect(result.messages).toEqual([
 			{ ...preceding, content: [{ ...block, cache_control: cache }] },
 			assistant,
@@ -558,7 +572,7 @@ describe("Pi native Anthropic transcript updates", () => {
 					},
 				],
 			},
-			false,
+			{ aliasTools: true },
 		);
 		expect(result.messages).toEqual([
 			{ role: "system", content: [{ ...first, cache_control: cache }] },
@@ -582,7 +596,7 @@ describe("Pi native Anthropic transcript updates", () => {
 					})),
 				],
 			},
-			false,
+			{ aliasTools: true },
 		);
 		expect(result.messages).toEqual([message]);
 	});
@@ -591,7 +605,10 @@ describe("Pi native Anthropic transcript updates", () => {
 		const user = { role: "user", content: "First" };
 		const change = { type: "tool_addition", tool: { type: "tool_reference", name: "unknown_flat" } };
 		expect(
-			_test.transformPayload({ tools: [], messages: [user, { role: "system", content: [change] }] }, false).messages,
+			_test.transformPayload(
+				{ tools: [], messages: [user, { role: "system", content: [change] }] },
+				{ aliasTools: true },
+			).messages,
 		).toEqual([user]);
 		const assistant = { role: "assistant", content: [{ type: "thinking", thinking: "Reasoning", signature: "sig" }] };
 		const effort = { role: "system", content: [], output_config: { effort: "high" } };
@@ -606,7 +623,7 @@ describe("Pi native Anthropic transcript updates", () => {
 						user,
 					],
 				},
-				false,
+				{ aliasTools: true },
 			).messages,
 		).toEqual([assistant, effort, user]);
 	});
@@ -631,7 +648,7 @@ describe("Pi native Anthropic transcript updates", () => {
 					},
 				],
 			},
-			false,
+			{ aliasTools: true },
 		);
 		expect(result.messages).toEqual([
 			{
@@ -691,7 +708,7 @@ describe("Pi native Anthropic transcript updates", () => {
 					{ role: "system", content: [], output_config: { effort: "high" } },
 				],
 			},
-			false,
+			{ aliasTools: true },
 		);
 		expect(result.messages).toEqual([
 			{
@@ -720,7 +737,7 @@ describe("Pi native Anthropic transcript updates", () => {
 				],
 				messages: [],
 			},
-			false,
+			{ aliasTools: true },
 		);
 		expect(result.tools).toEqual([placeholder]);
 	});
@@ -751,7 +768,7 @@ describe("Pi native Anthropic transcript updates", () => {
 					},
 				],
 			},
-			false,
+			{ aliasTools: true },
 		);
 		expect((result.messages as unknown[]).slice(0, 2)).toEqual(messages);
 		expect((result.messages as unknown[]).at(-1)).toEqual({

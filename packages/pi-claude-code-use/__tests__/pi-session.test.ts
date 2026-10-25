@@ -79,6 +79,14 @@ async function createSession(options: { codemode?: "only" } = {}) {
 	return { session, api };
 }
 
+// Tool aliasing is opt-in; these suites exercise it, so enable it per test.
+beforeEach(() => {
+	vi.stubEnv("PI_CLAUDE_CODE_USE_TOOL_ALIASES", "1");
+});
+afterEach(() => {
+	vi.unstubAllEnvs();
+});
+
 beforeEach(() => {
 	scratch = mkdtempSync(join(tmpdir(), "pi-claude-session-"));
 	vi.stubEnv("PI_CODING_AGENT_DIR", scratch);
@@ -134,7 +142,10 @@ describe("pi-claude-code-use in a Pi session", () => {
 				},
 				onPayload: (payload) => {
 					// The request hook passes pi.getActiveTools() the same way.
-					wire = _test.transformPayload(payload as Record<string, unknown>, false, api.getActiveTools());
+					wire = _test.transformPayload(payload as Record<string, unknown>, {
+						aliasTools: true,
+						activeToolNames: api.getActiveTools(),
+					});
 					throw new Error("Payload captured");
 				},
 			}).result();
