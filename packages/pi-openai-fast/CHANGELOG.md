@@ -7,6 +7,15 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-10-25
+
+### Added
+- Added fast mode support for `openai/gpt-6-sol`, `openai/gpt-6.1-sol`, and `openai/gpt-6-luna`. The Codex CLI model catalog advertises a `priority` ("Fast") service tier for each. They are listed only under `openai`, which Sign in with ChatGPT uses in pi 1.x; pi's legacy `openai-codex` provider does not list them.
+
+### Changed
+- Extended the legacy default model list migration so configs on the previous thirteen-model default (1.1.1) upgrade to the current defaults; customized `supportedModels` lists are left untouched.
+- Verified against pi 1.4.0.
+
 ## [1.1.1] - 2026-09-11
 
 ### Added

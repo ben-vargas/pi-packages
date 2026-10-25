@@ -20,12 +20,30 @@ const VERBOSITY_COMMAND = "openai-verbosity";
 const VERBOSITY_CONFIG_BASENAME = "pi-openai-verbosity.json";
 const VERBOSITY_COMMAND_ARGS = ["status"] as const;
 const DEBUG_LOG_ENV = "PI_OPENAI_VERBOSITY_DEBUG_LOG";
-const SUPPORTED_PROVIDERS = ["openai-codex"] as const;
-// Mirrors the Codex CLI upstream `default_verbosity` for every model in pi's
-// openai-codex catalog as of pi 0.85.1 (gpt-5.3-codex-spark through
-// gpt-6-astra). pi itself falls back to `low` for all codex requests, which
-// matches upstream everywhere except gpt-5.4-mini (upstream default: medium).
+const SUPPORTED_PROVIDERS = ["openai", "openai-codex"] as const;
+// Mirrors the Codex CLI upstream `default_verbosity`. For `openai-codex`, this
+// covers every model in pi's catalog as of pi 0.85.1 (gpt-5.3-codex-spark
+// through gpt-6-astra). pi itself falls back to `low` for all codex requests,
+// which matches upstream everywhere except gpt-5.4-mini (upstream default:
+// medium).
+//
+// pi 1.x supersedes `openai-codex` with Sign in with ChatGPT on the `openai`
+// provider, whose Responses requests carry no `text.verbosity` and so run at
+// the API default (`medium`). The `openai` entries apply the same Codex CLI
+// defaults so ChatGPT-backed sessions keep their Codex verbosity. Those
+// defaults are `low` for every current model as of 2026-10-25.
 const DEFAULT_MODEL_VERBOSITY = {
+	"openai/gpt-5.3-codex-spark": "low",
+	"openai/gpt-5.4": "low",
+	"openai/gpt-5.4-mini": "medium",
+	"openai/gpt-5.5": "low",
+	"openai/gpt-5.6-luna": "low",
+	"openai/gpt-5.6-sol": "low",
+	"openai/gpt-5.6-terra": "low",
+	"openai/gpt-6-astra": "low",
+	"openai/gpt-6-luna": "low",
+	"openai/gpt-6-sol": "low",
+	"openai/gpt-6.1-sol": "low",
 	"openai-codex/gpt-5.3-codex-spark": "low",
 	"openai-codex/gpt-5.4": "low",
 	"openai-codex/gpt-5.4-mini": "medium",

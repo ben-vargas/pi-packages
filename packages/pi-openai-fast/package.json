@@ -1,6 +1,6 @@
 {
   "name": "@benvargas/pi-openai-fast",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "OpenAI fast mode toggle for pi - Enables priority service tier on supported GPT-5 and GPT-6 models",
   "keywords": [
     "pi",

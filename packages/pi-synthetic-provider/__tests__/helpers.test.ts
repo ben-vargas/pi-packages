@@ -26,10 +26,12 @@ describe("pi-synthetic-provider helpers", () => {
 			"syn:small:text",
 			"syn:large:vision",
 			"syn:small:vision",
+			"infinite:small:vision",
 			"hf:openai/gpt-oss-120b",
 			"hf:zai-org/GLM-5.3",
 			"hf:zai-org/GLM-5.3-Flash",
 			"hf:deepseek-ai/DeepSeek-V4.1-Flash",
+			"hf:deepseek-ai/DeepSeek-V4.1-Flash-1017",
 			"hf:moonshotai/Kimi-K3",
 			"hf:Qwen/Qwen3.8-27B",
 			"hf:zai-org/GLM-4.7-Flash",
@@ -78,28 +80,41 @@ describe("pi-synthetic-provider helpers", () => {
 			contextWindow: 524288,
 			cost: { input: 3, output: 15, cacheRead: 0.45 },
 		});
-		// syn:large:text was re-pointed from GLM 5.3-Flash to DeepSeek V4.1-Flash.
+		// syn:large:text was re-pointed from DeepSeek V4.1-Flash to its 10/17 snapshot.
 		expect(models.find((model) => model.id === "syn:large:text")).toMatchObject({
 			contextWindow: 524288,
 			input: ["text", "image"],
 			cost: { input: 0.6, output: 1.2, cacheRead: 0.03 },
+		});
+		// syn:small:vision was re-pointed from Qwen 3.8-27B to DeepSeek V4.1-Flash 10/17.
+		expect(models.find((model) => model.id === "syn:small:vision")).toMatchObject({
+			contextWindow: 524288,
+			input: ["text", "image"],
+			cost: { input: 0.6, output: 1.2, cacheRead: 0.03 },
+		});
+		expect(models.find((model) => model.id === "infinite:small:vision")).toMatchObject({
+			contextWindow: 524288,
+			input: ["text", "image"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 		});
 	});
 
 	it("matches the live catalog price for every fallback model", () => {
 		// Exact expected values, not merely cacheRead < input: the bug being guarded
 		// against set cacheRead equal to input, and a too-low wrong value would still
-		// satisfy an inequality. Sourced from input_cache_reads in the 2026-10-13
+		// satisfy an inequality. Sourced from input_cache_reads in the 2026-10-25
 		// catalog pull.
 		const expected: Record<string, { input: number; output: number; cacheRead: number }> = {
 			"syn:large:text": { input: 0.6, output: 1.2, cacheRead: 0.03 },
 			"syn:small:text": { input: 0.1, output: 0.5, cacheRead: 0.02 },
 			"syn:large:vision": { input: 3, output: 15, cacheRead: 0.45 },
-			"syn:small:vision": { input: 0.45, output: 2.2, cacheRead: 0.09 },
+			"syn:small:vision": { input: 0.6, output: 1.2, cacheRead: 0.03 },
+			"infinite:small:vision": { input: 0, output: 0, cacheRead: 0 },
 			"hf:openai/gpt-oss-120b": { input: 0.1, output: 0.1, cacheRead: 0.02 },
 			"hf:zai-org/GLM-5.3": { input: 1.4, output: 4.4, cacheRead: 0.26 },
 			"hf:zai-org/GLM-5.3-Flash": { input: 0.15, output: 0.5, cacheRead: 0.04 },
 			"hf:deepseek-ai/DeepSeek-V4.1-Flash": { input: 0.6, output: 1.2, cacheRead: 0.03 },
+			"hf:deepseek-ai/DeepSeek-V4.1-Flash-1017": { input: 0.6, output: 1.2, cacheRead: 0.03 },
 			"hf:moonshotai/Kimi-K3": { input: 3, output: 15, cacheRead: 0.45 },
 			"hf:Qwen/Qwen3.8-27B": { input: 0.45, output: 2.2, cacheRead: 0.09 },
 			"hf:zai-org/GLM-4.7-Flash": { input: 0.1, output: 0.5, cacheRead: 0.02 },
@@ -115,7 +130,10 @@ describe("pi-synthetic-provider helpers", () => {
 				...expected[model.id],
 			});
 			expect(model.cost.cacheWrite).toBe(0);
-			expect(model.cost.cacheRead).toBeLessThan(model.cost.input);
+			// infinite:small:vision is zero-priced, so it has no discount to check.
+			if (model.cost.input > 0) {
+				expect(model.cost.cacheRead).toBeLessThan(model.cost.input);
+			}
 		}
 	});
 
@@ -146,6 +164,10 @@ describe("pi-synthetic-provider helpers", () => {
 				"hf:deepseek-ai/DeepSeek-V4.1-Flash",
 				{ off: "none", minimal: null, low: "low", medium: null, high: "high", xhigh: "xhigh", max: "max" },
 			],
+			[
+				"hf:deepseek-ai/DeepSeek-V4.1-Flash-1017",
+				{ off: "none", minimal: null, low: "low", medium: null, high: "high", xhigh: "xhigh", max: "max" },
+			],
 			["hf:zai-org/GLM-4.7-Flash", noneLowMediumHigh],
 			["hf:openai/gpt-oss-120b", noneLowMediumHigh],
 			["hf:moonshotai/Kimi-K3", lowHighMax],
@@ -165,7 +187,13 @@ describe("pi-synthetic-provider helpers", () => {
 		// Permalinks keep default compat offline because there is no live row proving
 		// which target they currently resolve to. Live discovery uses each row's
 		// reasoning_parameters.efforts, with hugging_face_id as a legacy fallback.
-		for (const id of ["syn:large:text", "syn:small:text", "syn:large:vision", "syn:small:vision"]) {
+		for (const id of [
+			"syn:large:text",
+			"syn:small:text",
+			"syn:large:vision",
+			"syn:small:vision",
+			"infinite:small:vision",
+		]) {
 			const model = models.find((m) => m.id === id);
 			expect(model).toMatchObject({ compat: { supportsReasoningEffort: false } });
 			expect(model?.thinkingLevelMap).toBeUndefined();

@@ -53,6 +53,7 @@ import { fetchSyntheticModels } from "./models.js";
 
 // Re-export public API for tests and consumers
 export { parsePrice } from "./formatting.js";
+export type { SyntheticModelConfig } from "./models.js";
 export { getFallbackModels } from "./models.js";
 export {
 	buildProgressBar,

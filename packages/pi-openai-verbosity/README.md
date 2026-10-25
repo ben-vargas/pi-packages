@@ -1,6 +1,6 @@
 # @benvargas/pi-openai-verbosity
 
-Per-model text verbosity overrides for pi's `openai-codex` provider.
+Per-model text verbosity overrides for pi's `openai` and `openai-codex` providers.
 
 ## Why This Exists
 
@@ -27,12 +27,17 @@ long-form writing.
 This extension now provides the missing user-facing control: per-slug verbosity settings for pi's
 `openai-codex` provider.
 
+pi 1.x supersedes `openai-codex` (now "OpenAI Codex (legacy)") with Sign in with ChatGPT on the `openai`
+provider. That provider sends no `text.verbosity`, so requests run at the Responses API default (`medium`) rather
+than the Codex CLI's per-model defaults. The extension applies the same Codex CLI defaults to `openai/<model>`
+keys, so ChatGPT-backed sessions keep their Codex verbosity.
+
 Requires pi `0.74.0` or newer.
 
 ## What It Does
 
 The extension uses pi's `before_provider_request` hook to rewrite outgoing provider payloads for configured
-`openai-codex/<model>` keys.
+`openai/<model>` and `openai-codex/<model>` keys.
 
 For matching models, it sets:
 
@@ -101,7 +106,7 @@ Example config:
 
 Settings:
 
-- `models`: object mapping `openai-codex/<model-id>` strings to `low`, `medium`, or `high`.
+- `models`: object mapping `openai/<model-id>` or `openai-codex/<model-id>` strings to `low`, `medium`, or `high`.
 
 Project config overrides global config per model key. Any model not listed is left unchanged, which means pi's
 native default behavior applies.
@@ -109,12 +114,24 @@ native default behavior applies.
 ## Default Config
 
 By default, the extension mirrors the Codex CLI's own per-model verbosity defaults for every model in pi's
-`openai-codex` catalog. That means `low` everywhere except `gpt-5.4-mini`, whose upstream default is `medium`
-(pi's blanket fallback would otherwise force it to `low`):
+`openai-codex` catalog and for the matching current models on `openai`. That means `low` everywhere except
+`gpt-5.4-mini`, whose upstream default is `medium` (pi's blanket `openai-codex` fallback would otherwise force it
+to `low`):
 
 ```json
 {
   "models": {
+    "openai/gpt-5.3-codex-spark": "low",
+    "openai/gpt-5.4": "low",
+    "openai/gpt-5.4-mini": "medium",
+    "openai/gpt-5.5": "low",
+    "openai/gpt-5.6-luna": "low",
+    "openai/gpt-5.6-sol": "low",
+    "openai/gpt-5.6-terra": "low",
+    "openai/gpt-6-astra": "low",
+    "openai/gpt-6-luna": "low",
+    "openai/gpt-6-sol": "low",
+    "openai/gpt-6.1-sol": "low",
     "openai-codex/gpt-5.3-codex-spark": "low",
     "openai-codex/gpt-5.4": "low",
     "openai-codex/gpt-5.4-mini": "medium",
@@ -157,7 +174,7 @@ So for the `openai-codex` provider, this extension remains the only way to set p
 
 ### If you use `samplingParams` on the plain `openai` provider
 
-There it *is* applied, but the merge is a shallow top-level `Object.assign`. That means:
+There it *is* applied, so `samplingParams` is a native alternative for `openai` models. However, the merge is a shallow top-level `Object.assign`. That means:
 
 ```json
 { "samplingParams": { "text": { "verbosity": "medium" } } }
@@ -196,10 +213,12 @@ delete it when you are done debugging.
 
 - This extension only changes outgoing provider request payloads.
 - Existing `text` fields are preserved, and only `text.verbosity` is replaced.
-- Only the `openai-codex` provider is supported. pi 0.84.0's `samplingParams` does not reach that provider, so
+- The `openai` and `openai-codex` providers are supported. pi's `samplingParams` does not reach `openai-codex`, so
   this extension remains the only per-model verbosity control for it — see
   [Why not `samplingParams`?](#why-not-samplingparams).
-- This extension is most useful if you want different verbosity settings for different OpenAI Codex model slugs.
+- On `openai`, the shipped defaults change requests from the API default (`medium`) to the Codex CLI defaults. Set a
+  model to `medium` in your config to keep the API default for it.
+- Older OpenAI models such as `gpt-4.1` reject `text.verbosity`, so only add models that support it.
 
 ## Uninstall
 

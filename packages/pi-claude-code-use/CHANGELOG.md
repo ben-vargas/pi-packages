@@ -7,6 +7,15 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.2] - 2026-10-25
+
+### Fixed
+- Support Pi 1.x inline tool definitions. Pi 1.x keeps the top-level Anthropic tool list fixed and defines tools added mid-conversation by value in `tool_addition` blocks (`tool_definition`). These were not recognized, so flat custom tool names (for example `web_search_exa`) reached the OAuth endpoint without their `mcp__` aliases. Inline definitions now follow the top-level rules: flat tools are renamed to their aliases, flat+alias pairs collapse to one definition using the flat source's schema, and unaliased flat tools are dropped with their cache breakpoint relocated. Removals and `tool_choice` resolve against tools that were only defined inline.
+- Keep same-name inline redefinitions of an already-active tool, which Pi 1.x uses for schema updates, instead of discarding them as redundant additions.
+- Register alias tools with `exposure: "model-only"` (Pi 0.99+). Pi defaulted them to `direct`, which made them callable through `ctx.executeTool()` and listed in codemode, where calls failed in the alias stub. Other tools and codemode scripts now reach only the source tool, with its own output schema. An alias is withdrawn (`hidden`) when its source tool is hidden.
+- Leave out an alias when its source tool is active but Pi left its declaration out of the request, as codemode's `only` mode does for direct tools. Pi does not hide model-only tools, so the alias follows its source here; an alias kept active while its source is inactive remains a user selection and stays declared.
+- Pi 0.86 `tool_reference` additions remain supported. Validated against Pi 1.4.0.
+
 ## [2.2.1] - 2026-09-20
 
 ### Fixed

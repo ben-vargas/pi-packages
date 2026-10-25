@@ -114,6 +114,9 @@ describe("pi-openai-fast helpers", () => {
 				{ provider: "openai", id: "gpt-5.6-terra" },
 				{ provider: "openai", id: "gpt-5.6-luna" },
 				{ provider: "openai", id: "gpt-6-astra" },
+				{ provider: "openai", id: "gpt-6-sol" },
+				{ provider: "openai", id: "gpt-6.1-sol" },
+				{ provider: "openai", id: "gpt-6-luna" },
 				{ provider: "openai-codex", id: "gpt-5.4" },
 				{ provider: "openai-codex", id: "gpt-5.5" },
 				{ provider: "openai-codex", id: "gpt-5.6-sol" },
@@ -189,6 +192,24 @@ describe("pi-openai-fast helpers", () => {
 				"openai-codex/gpt-5.6-luna",
 			]),
 		).toContain("openai-codex/gpt-6-astra");
+		// The 1.1.1 default (thirteen models, gpt-6-astra included) is a legacy set now.
+		expect(
+			_test.migrateSupportedModelKeys([
+				"openai/gpt-5.4",
+				"openai/gpt-5.4-mini",
+				"openai/gpt-5.5",
+				"openai/gpt-5.6-sol",
+				"openai/gpt-5.6-terra",
+				"openai/gpt-5.6-luna",
+				"openai/gpt-6-astra",
+				"openai-codex/gpt-5.4",
+				"openai-codex/gpt-5.5",
+				"openai-codex/gpt-5.6-sol",
+				"openai-codex/gpt-5.6-terra",
+				"openai-codex/gpt-5.6-luna",
+				"openai-codex/gpt-6-astra",
+			]),
+		).toEqual([..._test.DEFAULT_SUPPORTED_MODEL_KEYS]);
 		expect(_test.migrateSupportedModelKeys(["openai/gpt-5.4"])).toEqual(["openai/gpt-5.4"]);
 		expect(_test.migrateSupportedModelKeys(undefined)).toBeUndefined();
 	});

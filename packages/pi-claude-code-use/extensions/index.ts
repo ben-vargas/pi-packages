@@ -452,7 +452,51 @@ function collectToolsByName(tools: unknown[]): Map<string, Record<string, unknow
 	return byName;
 }
 
-function filterAndRemapTools(tools: unknown[] | undefined, disableFilter: boolean): unknown[] | undefined {
+/**
+ * Wire name for a tool declared outside the top-level list (Pi 1.x inline
+ * `tool_addition` definitions), following rules 2-6 above: core and mcp__ names
+ * pass through, flat tools take a known alias, and other flat tools are dropped.
+ */
+function projectDeclaredToolName(name: string, advertised: ReadonlySet<string>): string | undefined {
+	const nameLc = lower(name);
+	if (CORE_TOOL_NAMES.has(nameLc) || nameLc.startsWith("mcp__")) return name;
+	const mcpAlias = FLAT_TO_MCP.get(nameLc);
+	if (!mcpAlias) return undefined;
+	const aliasLc = lower(mcpAlias);
+	return advertised.has(aliasLc) || registeredMcpAliases.has(aliasLc) ? mcpAlias : undefined;
+}
+
+/**
+ * Aliases whose flat source is active in Pi but absent from the request. Pi
+ * leaves out declarations that a loadout hook hides (codemode's "only" mode
+ * hides active direct tools). Model-only aliases are not hidden with them, so
+ * they follow their source here. An alias kept active while its source is
+ * inactive is a deliberate user selection and stays declared.
+ */
+function findHiddenSourceAliases(payload: Record<string, unknown>, activeToolNames: readonly string[]): Set<string> {
+	const declared = collectToolNames(Array.isArray(payload.tools) ? payload.tools : []);
+	if (Array.isArray(payload.messages)) {
+		for (const msg of payload.messages) {
+			if (!isPlainObject(msg) || msg.role !== "system" || !Array.isArray(msg.content)) continue;
+			for (const block of msg.content) {
+				if (isToolChangeBlock(block) && block.type === "tool_addition") declared.add(lower(getToolChangeName(block)));
+			}
+		}
+	}
+	const hidden = new Set<string>();
+	for (const name of activeToolNames) {
+		const nameLc = lower(name);
+		const alias = FLAT_TO_MCP.get(nameLc);
+		if (alias && registeredMcpAliases.has(lower(alias)) && !declared.has(nameLc)) hidden.add(lower(alias));
+	}
+	return hidden;
+}
+
+function filterAndRemapTools(
+	tools: unknown[] | undefined,
+	disableFilter: boolean,
+	hiddenAliases: ReadonlySet<string> = new Set(),
+): unknown[] | undefined {
 	if (!Array.isArray(tools)) return tools;
 
 	const advertised = collectToolNames(tools);
@@ -505,6 +549,15 @@ function filterAndRemapTools(tools: unknown[] | undefined, disableFilter: boolea
 		const name = typeof tool.name === "string" ? tool.name : "";
 		if (!name) continue;
 		const nameLc = lower(name);
+
+		if (hiddenAliases.has(nameLc)) {
+			// Keep the tool-list cache breakpoint on the preceding declaration.
+			const previous = result.at(-1);
+			if (tool.cache_control !== undefined && isPlainObject(previous) && previous.cache_control === undefined) {
+				result[result.length - 1] = { ...previous, cache_control: tool.cache_control };
+			}
+			continue;
+		}
 
 		// Rules 2 & 3: core tools and mcp__-prefixed pass through (with dedup).
 		// Skip stubs replaced at the flat entry's position, except when keeping
@@ -580,17 +633,68 @@ function remapToolChoice(
 
 type ToolChangeBlock = Record<string, unknown> & {
 	type: "tool_addition" | "tool_removal";
-	tool: Record<string, unknown> & { type: "tool_reference"; name: string };
+	tool: Record<string, unknown> &
+		(
+			| { type: "tool_reference"; name: string }
+			| { type: "tool_definition"; definition: Record<string, unknown> & { name: string } }
+		);
 };
 
+/**
+ * Native mid-conversation tool changes. Pi 0.86 references tools declared in
+ * the top-level list (`tool_reference`); Pi 1.x keeps that list fixed and
+ * defines later tools by value (`tool_definition`, additions only), where a
+ * same-name addition redefines the tool.
+ */
 function isToolChangeBlock(block: unknown): block is ToolChangeBlock {
+	if (!isPlainObject(block) || !isPlainObject(block.tool)) return false;
+	if (block.type !== "tool_addition" && block.type !== "tool_removal") return false;
+	if (block.tool.type === "tool_reference") return typeof block.tool.name === "string";
 	return (
-		isPlainObject(block) &&
-		(block.type === "tool_addition" || block.type === "tool_removal") &&
-		isPlainObject(block.tool) &&
-		block.tool.type === "tool_reference" &&
-		typeof block.tool.name === "string"
+		block.type === "tool_addition" &&
+		block.tool.type === "tool_definition" &&
+		isPlainObject(block.tool.definition) &&
+		typeof block.tool.definition.name === "string"
 	);
+}
+
+function isToolDefinitionAddition(block: ToolChangeBlock): boolean {
+	return block.tool.type === "tool_definition";
+}
+
+function getToolChangeName(block: ToolChangeBlock): string {
+	return block.tool.type === "tool_definition" ? block.tool.definition.name : block.tool.name;
+}
+
+function renameToolChange(block: ToolChangeBlock, name: string): ToolChangeBlock {
+	const tool =
+		block.tool.type === "tool_definition"
+			? { ...block.tool, definition: { ...block.tool.definition, name } }
+			: { ...block.tool, name };
+	return { ...block, tool } as ToolChangeBlock;
+}
+
+/** Add the wire names of inline tool definitions, which the fixed top-level list never declares. */
+function addInlineToolNames(
+	messages: unknown[],
+	tools: unknown[],
+	survivingNames: Map<string, string>,
+	hiddenAliases: ReadonlySet<string>,
+): void {
+	const definitions: string[] = [];
+	for (const msg of messages) {
+		if (!isPlainObject(msg) || msg.role !== "system" || !Array.isArray(msg.content)) continue;
+		for (const block of msg.content) {
+			if (isToolChangeBlock(block) && isToolDefinitionAddition(block)) definitions.push(getToolChangeName(block));
+		}
+	}
+	if (definitions.length === 0) return;
+	const advertised = new Set([...collectToolNames(tools), ...definitions.map(lower)]);
+	for (const name of definitions) {
+		const wireName = projectDeclaredToolName(name, advertised);
+		const wireLc = wireName ? lower(wireName) : "";
+		if (wireName && !hiddenAliases.has(wireLc) && !survivingNames.has(wireLc)) survivingNames.set(wireLc, wireName);
+	}
 }
 
 function resolveWireToolName(name: string, survivingNames: Map<string, string>): string | undefined {
@@ -611,8 +715,13 @@ function remapSystemToolChanges(
 			[...activeNames].map((name) => resolveWireToolName(name, survivingNames)).filter((name) => name !== undefined),
 		);
 	const before = wireNames();
+	const activeBefore = new Set(activeNames);
 	const candidates: unknown[] = [];
 	const lastChanges = new Map<string, ToolChangeBlock>();
+	// Wire names redefined by value: a Pi 1.x addition of a tool that was already active.
+	const redefined = new Set<string>();
+	// Wire names whose kept definition came from the flat source tool.
+	const flatDefinitions = new Set<string>();
 	let droppedCacheControl: unknown;
 
 	for (const block of content) {
@@ -620,17 +729,29 @@ function remapSystemToolChanges(
 			candidates.push(block);
 			continue;
 		}
-		const nameLc = lower(block.tool.name);
+		const rawName = getToolChangeName(block);
+		const nameLc = lower(rawName);
 		if (block.type === "tool_addition") activeNames.add(nameLc);
 		else activeNames.delete(nameLc);
-		const name = resolveWireToolName(block.tool.name, survivingNames);
+		const name = resolveWireToolName(rawName, survivingNames);
 		if (!name) {
 			if (block.cache_control !== undefined) droppedCacheControl = block.cache_control;
 			continue;
 		}
 		const key = `${block.type}:${name}`;
 		const previous = lastChanges.get(key);
-		const remapped: ToolChangeBlock = { ...block, tool: { ...block.tool, name } };
+		let remapped = renameToolChange(block, name);
+		if (isToolDefinitionAddition(block)) {
+			if (activeBefore.has(nameLc)) redefined.add(name);
+			// Prefer the flat source's schema, as for top-level tools: the alias stub
+			// can lag one turn behind a mid-session source schema update.
+			const fromFlat = lower(name) !== nameLc;
+			if (previous && flatDefinitions.has(name) && !fromFlat) {
+				remapped = { ...remapped, tool: previous.tool };
+			} else if (fromFlat) {
+				flatDefinitions.add(name);
+			}
+		}
 		if (previous?.cache_control !== undefined && remapped.cache_control === undefined) {
 			remapped.cache_control = previous.cache_control;
 		}
@@ -641,11 +762,15 @@ function remapSystemToolChanges(
 	const after = wireNames();
 	const result = candidates.filter((block) => {
 		if (!isToolChangeBlock(block)) return true;
-		const { name } = block.tool;
+		const name = getToolChangeName(block);
 		// Keep only the net change. Removing the flat source must not withdraw a
 		// still-active alias, and flat+alias additions must produce one addition.
+		// Inline redefinitions of an already-active tool carry a new schema, so
+		// they are kept while the tool stays active.
 		const changed =
-			block.type === "tool_addition" ? !before.has(name) && after.has(name) : before.has(name) && !after.has(name);
+			block.type === "tool_addition"
+				? after.has(name) && (!before.has(name) || redefined.has(name))
+				: before.has(name) && !after.has(name);
 		if (changed && lastChanges.get(`${block.type}:${name}`) === block) return true;
 		if (block.cache_control !== undefined) droppedCacheControl = block.cache_control;
 		return false;
@@ -746,7 +871,11 @@ function remapMessageToolNames(
 // Full payload transform
 // ============================================================================
 
-function transformPayload(raw: Record<string, unknown>, disableFilter: boolean): Record<string, unknown> {
+function transformPayload(
+	raw: Record<string, unknown>,
+	disableFilter: boolean,
+	activeToolNames: readonly string[] = [],
+): Record<string, unknown> {
 	// Deep clone to avoid mutating the original
 	const payload = JSON.parse(JSON.stringify(raw)) as Record<string, unknown>;
 
@@ -767,7 +896,8 @@ function transformPayload(raw: Record<string, unknown>, disableFilter: boolean):
 
 	// 2. Tool filtering and alias remapping
 	const originalTools = Array.isArray(payload.tools) ? payload.tools : [];
-	payload.tools = filterAndRemapTools(payload.tools as unknown[] | undefined, false);
+	const hiddenAliases = findHiddenSourceAliases(payload, activeToolNames);
+	payload.tools = filterAndRemapTools(payload.tools as unknown[] | undefined, false, hiddenAliases);
 
 	// 3. Build map of tool names that survived filtering (lowercase → actual name)
 	const survivingNames = new Map<string, string>();
@@ -777,6 +907,11 @@ function transformPayload(raw: Record<string, unknown>, disableFilter: boolean):
 				survivingNames.set(lower(tool.name), tool.name as string);
 			}
 		}
+	}
+
+	// Pi 1.x keeps the top-level list fixed and defines later tools inline.
+	if (Array.isArray(payload.messages)) {
+		addInlineToolNames(payload.messages, originalTools, survivingNames, hiddenAliases);
 	}
 
 	// 4. Remap tool_choice if it references a renamed or filtered tool
@@ -931,6 +1066,7 @@ interface AliasSourceMeta {
 	description: string;
 	parameters: unknown;
 	promptGuidelines: unknown;
+	exposure: unknown;
 }
 const aliasSourceMeta = new Map<string, AliasSourceMeta>();
 
@@ -1048,6 +1184,8 @@ function registerMcpAliases(pi: ExtensionAPI, opts: { cwd?: string; agentDir?: s
 			description: tool.description,
 			parameters: tool.parameters,
 			promptGuidelines: tool.promptGuidelines,
+			// Pi 0.99+ reports exposure; older releases omit it.
+			exposure: tool.exposure,
 		};
 		if (registeredMcpAliases.has(mcpLc)) {
 			// Re-register when the source tool's metadata changed (e.g. the source
@@ -1059,6 +1197,7 @@ function registerMcpAliases(pi: ExtensionAPI, opts: { cwd?: string; agentDir?: s
 				previous.description === meta.description &&
 				previous.parameters === meta.parameters &&
 				previous.promptGuidelines === meta.promptGuidelines &&
+				previous.exposure === meta.exposure &&
 				aliasExactNames.get(mcpLc) === mcpName
 			) {
 				return;
@@ -1077,13 +1216,19 @@ function registerMcpAliases(pi: ExtensionAPI, opts: { cwd?: string; agentDir?: s
 			description: tool.description,
 			parameters: tool.parameters,
 			...(tool.promptGuidelines ? { promptGuidelines: tool.promptGuidelines } : {}),
+			// Aliases are declared to the model but never callable (Pi 0.99+): other
+			// tools and codemode scripts reach the source tool itself, with its output
+			// schema and execution, instead of a schema-only stub. A withdrawn (hidden)
+			// source withdraws its alias. Older releases ignore `exposure`.
+			exposure: meta.exposure === "hidden" ? "hidden" : "model-only",
 			renderResult(result, { expanded, isPartial }, theme, context) {
 				return renderCompactAliasResult(result.content, { expanded, isPartial }, theme, context.showImages);
 			},
 			async execute() {
 				// Managed alias calls are rewritten back to the flat tool name at
-				// message_end before Pi resolves execution, so this stub only runs
-				// if that rewrite was somehow bypassed.
+				// message_end before Pi resolves execution, and model-only aliases are
+				// not callable by other tools, so this stub only runs if that rewrite
+				// was somehow bypassed.
 				throw new Error(
 					`Tool alias "${mcpName}" was invoked directly; pi-claude-code-use should have routed it to "${tool.name}".`,
 				);
@@ -1252,7 +1397,11 @@ export default async function piClaudeCodeUse(pi: ExtensionAPI): Promise<void> {
 
 		writeDebugLog({ stage: "before", payload: event.payload });
 		const disableFilter = process.env.PI_CLAUDE_CODE_USE_DISABLE_TOOL_FILTER === "1";
-		const transformed = transformPayload(event.payload as Record<string, unknown>, disableFilter);
+		const transformed = transformPayload(
+			event.payload as Record<string, unknown>,
+			disableFilter,
+			disableFilter ? [] : pi.getActiveTools(),
+		);
 		writeDebugLog({ stage: "after", payload: transformed });
 		return transformed;
 	});

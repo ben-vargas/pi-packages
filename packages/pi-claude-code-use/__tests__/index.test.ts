@@ -27,6 +27,7 @@ function mockTool(name: string, sourceOverrides?: { baseDir?: string; path?: str
 		name,
 		description: sourceOverrides?.description ?? "",
 		parameters: {} as never,
+		exposure: "direct" as const,
 		sourceInfo: {
 			path: sourceOverrides?.path ?? "",
 			source: "test",
@@ -701,6 +702,28 @@ describe("pi-claude-code-use", () => {
 			expect(_test.FLAT_TO_MCP.get("web_search_exa")).toBe("mcp__exa_mcp__web_search_exa");
 			expect(_test.MCP_TO_FLAT.get("mcp__exa_mcp__web_search_exa")).toBe("web_search_exa");
 			expect(_test.registeredMcpAliases.has("mcp__exa_mcp__web_search_exa")).toBe(true);
+		});
+
+		it("registers aliases as model-only and withdraws them with a hidden source", () => {
+			const pi = createMockPi();
+			const source = {
+				...mockTool("lookup", { path: "/x/node_modules/pi-lookup/index.js" }),
+				exposure: "codemode" as const,
+			};
+			pi.getAllTools.mockReturnValue([source]);
+
+			registerAliasesIsolated(pi, tempDir);
+			expect(pi.registerTool).toHaveBeenLastCalledWith(
+				expect.objectContaining({ name: "mcp__lookup__lookup", exposure: "model-only" }),
+			);
+
+			// A source withdrawn as hidden must withdraw its alias as well.
+			pi.getAllTools.mockReturnValue([{ ...source, exposure: "hidden" as const }]);
+			registerAliasesIsolated(pi, tempDir);
+			expect(pi.registerTool).toHaveBeenCalledTimes(2);
+			expect(pi.registerTool).toHaveBeenLastCalledWith(
+				expect.objectContaining({ name: "mcp__lookup__lookup", exposure: "hidden" }),
+			);
 		});
 
 		describe("alias result rendering", () => {

@@ -30,7 +30,8 @@ describe("pi-openai-verbosity helpers", () => {
 	it("normalizes model keys and verbosity maps", () => {
 		expect(_test.normalizeModelKey(" openai-codex/gpt-5.5 ")).toBe("openai-codex/gpt-5.5");
 		expect(_test.normalizeModelKey("gpt-5.5")).toBeUndefined();
-		expect(_test.normalizeModelKey("openai/gpt-5.5")).toBeUndefined();
+		expect(_test.normalizeModelKey(" openai/gpt-6-sol ")).toBe("openai/gpt-6-sol");
+		expect(_test.normalizeModelKey("anthropic/claude-opus-5")).toBeUndefined();
 		expect(
 			_test.normalizeModelVerbosityMap({ " openai-codex/gpt-5.5 ": "low", "openai-codex/gpt-5.4": "loud" }),
 		).toEqual({
@@ -53,6 +54,11 @@ describe("pi-openai-verbosity helpers", () => {
 				"openai-codex/gpt-5.6-sol": "low",
 				"openai-codex/gpt-5.6-terra": "low",
 				"openai-codex/gpt-6-astra": "low",
+				"openai/gpt-5.4-mini": "medium",
+				"openai/gpt-6-astra": "low",
+				"openai/gpt-6-luna": "low",
+				"openai/gpt-6-sol": "low",
+				"openai/gpt-6.1-sol": "low",
 			});
 
 			const { projectConfigPath, globalConfigPath } = _test.getConfigPaths(cwd, agentDir);
