@@ -10,8 +10,8 @@ Pi packages can include extensions, skills, prompt templates, and themes. See th
 |---------|------|-------------|
 | [@benvargas/pi-synthetic-provider](./packages/pi-synthetic-provider/) | Extension | [Synthetic](https://synthetic.new) model provider (Kimi, GLM, MiniMax, Qwen, Nemotron, gpt-oss) |
 | [@benvargas/pi-antigravity-image-gen](./packages/pi-antigravity-image-gen/) | Extension | Antigravity image generation (Gemini 3 Pro, inline rendering) |
-| [@benvargas/pi-exa-mcp](./packages/pi-exa-mcp/) | Extension | Exa MCP tools — web search + code context |
-| [@benvargas/pi-firecrawl](./packages/pi-firecrawl/) | Extension | Firecrawl tools — scrape, map, search |
+| [@benvargas/pi-exa-mcp](./packages/pi-exa-mcp/) | Extension | **Deprecated**, use Pi's built-in MCP support. Exa MCP tools — web search + code context |
+| [@benvargas/pi-firecrawl](./packages/pi-firecrawl/) | Extension | **Deprecated**, use Pi's built-in MCP support. Firecrawl tools — scrape, map, search |
 | [@benvargas/pi-themes](./packages/pi-themes/) | Themes | Theme collection with GitHub, Orng, and monochrome light/dark palettes |
 | [@benvargas/pi-ancestor-discovery](./packages/pi-ancestor-discovery/) | Extension | Ancestor discovery for skills, prompts, themes |
 | [@benvargas/pi-cut-stack](./packages/pi-cut-stack/) | Extension | Cut-stack editor shortcuts |
@@ -21,6 +21,8 @@ Pi packages can include extensions, skills, prompt templates, and themes. See th
 | [@benvargas/pi-model-sort](./packages/pi-model-sort/) | Extension | Last-usage sorting for the `/model` picker and scoped cycling; fresh starts on the most recently used model |
 
 Each package has its own README with setup instructions, usage, and configuration details.
+
+`pi-exa-mcp` and `pi-firecrawl` are deprecated: Pi 0.99.0 added built-in MCP support, which connects to Exa's and Firecrawl's MCP servers directly. Installing this repository from git (`pi install git:github.com/ben-vargas/pi-packages`) no longer loads them, so after `pi update` their tools are gone from existing git installs. Each package's README explains how to move to Pi's MCP support. Both remain installable from npm.
 
 Security notes and dependency audit status are tracked in `SECURITY.md`.
 
@@ -54,8 +56,6 @@ Use the specific command from the table above for each package.
 ```bash
 pi install npm:@benvargas/pi-synthetic-provider
 pi install npm:@benvargas/pi-antigravity-image-gen
-pi install npm:@benvargas/pi-exa-mcp
-pi install npm:@benvargas/pi-firecrawl
 pi install npm:@benvargas/pi-themes
 pi install npm:@benvargas/pi-ancestor-discovery
 pi install npm:@benvargas/pi-cut-stack
