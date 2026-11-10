@@ -15,7 +15,7 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `firecrawl_search` keeps its default of 5 results by sending `limit: 5` when none is given (v2's own default is 10).
 - `firecrawl_search` sends `highlights: false` unless asked otherwise. v2 enables highlights by default, replacing the short result snippet with page excerpts that can exceed 10KB per result.
 - `firecrawl_scrape` `formats` accepts v2 format objects (`{ "type": "json", ... }`, `{ "type": "screenshot", "fullPage": true }`) alongside strings.
-- A trailing `/v1` or `/v2` on the configured base URL is ignored.
+- A trailing `/v1` or `/v2` pasted onto the hosted API URL (`api.firecrawl.dev`) is dropped. Self-hosted base URLs are used as given.
 
 ### Added
 - `firecrawl_scrape` `maxAge` parameter. v2 serves cached pages up to 2 days old by default; `maxAge: 0` forces a fresh scrape.
@@ -23,7 +23,7 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - v1 argument shapes are translated to v2 before sending: `screenshot@fullPage`, `extract`/`jsonOptions`, `changeTrackingOptions`, `parsePDF: false`, `geolocation`, and map `ignoreSitemap`/`sitemapOnly`.
 
 ### Removed
-- `firecrawl_search` `lang` parameter, which v2 does not accept; it is dropped if supplied. Map `maxDepth` and `allowBackwardLinks` are dropped for the same reason.
+- Map `maxDepth` and `allowBackwardLinks`, which v2 does not accept; they are dropped if supplied.
 
 ## [1.1.0] - 2026-08-06
 

@@ -128,11 +128,17 @@ describe("pi-firecrawl helpers", () => {
 		}
 	});
 
-	it("builds v2 URLs regardless of a trailing slash or version segment", () => {
+	it("builds v2 URLs and only drops a pasted version on the hosted API", () => {
 		expect(buildApiUrl("https://api.firecrawl.dev", "/scrape")).toBe("https://api.firecrawl.dev/v2/scrape");
 		expect(buildApiUrl("https://api.firecrawl.dev/", "/map")).toBe("https://api.firecrawl.dev/v2/map");
 		expect(buildApiUrl("https://api.firecrawl.dev/v1", "/search")).toBe("https://api.firecrawl.dev/v2/search");
-		expect(buildApiUrl("http://localhost:3002/v2/", "/scrape")).toBe("http://localhost:3002/v2/scrape");
+		expect(buildApiUrl("https://api.firecrawl.dev/v2/", "/scrape")).toBe("https://api.firecrawl.dev/v2/scrape");
+		// Self-hosted roots are used as given: a version-like host or mount path is not an API version.
+		expect(buildApiUrl("http://localhost:3002", "/scrape")).toBe("http://localhost:3002/v2/scrape");
+		expect(buildApiUrl("http://v1", "/scrape")).toBe("http://v1/v2/scrape");
+		expect(buildApiUrl("https://proxy.example/firecrawl/v1", "/scrape")).toBe(
+			"https://proxy.example/firecrawl/v1/v2/scrape",
+		);
 	});
 
 	it("migrates v1 scrape arguments to v2", () => {
@@ -186,6 +192,7 @@ describe("pi-firecrawl helpers", () => {
 			}),
 		).toEqual({
 			query: "pi agent",
+			lang: "en",
 			limit: 5,
 			highlights: false,
 			scrapeOptions: { formats: [{ type: "screenshot", fullPage: true }] },

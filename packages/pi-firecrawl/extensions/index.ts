@@ -14,6 +14,7 @@ import type { Static, TObject } from "typebox";
 import { Type } from "typebox";
 
 const DEFAULT_BASE_URL = "https://api.firecrawl.dev";
+const HOSTED_API_HOST = new URL(DEFAULT_BASE_URL).hostname;
 const API_VERSION_PATH = "/v2";
 const DEFAULT_TIMEOUT_MS = 30000;
 // v2 raised the search default from 5 to 10 results; keep the smaller v1 default to protect context.
@@ -166,10 +167,18 @@ function splitParams(params: Record<string, unknown>): {
 	};
 }
 
-// Accepts base URLs with or without a trailing version segment, so a config that pinned
-// ".../v1" keeps working after the v1 shutdown instead of resolving to ".../v1/v2/...".
+// The base URL is the service root, and self-hosted roots may be mounted under any path
+// (including one ending in a version-like segment), so it is used as given. The one
+// exception is the hosted API, which has no mounts: there a trailing /v1 or /v2 can only
+// be a pasted API version, and is dropped rather than doubled.
 function buildApiUrl(baseUrl: string, path: string): string {
-	const root = baseUrl.replace(/\/+$/, "").replace(/\/v[12]$/i, "");
+	let root = baseUrl.replace(/\/+$/, "");
+	try {
+		const parsed = new URL(root);
+		if (parsed.hostname === HOSTED_API_HOST && /^\/v[12]$/i.test(parsed.pathname)) root = parsed.origin;
+	} catch {
+		// Not a parseable URL; let fetch report it.
+	}
 	return `${root}${API_VERSION_PATH}${path}`;
 }
 
@@ -221,8 +230,7 @@ function migrateLegacyArgs(toolName: FirecrawlToolName, args: Record<string, unk
 		return rest;
 	}
 
-	// v2 search has no `lang`; language follows `country`/`location`.
-	const { lang: _lang, ...rest } = args;
+	const rest = { ...args };
 	if (rest.limit === undefined) rest.limit = DEFAULT_SEARCH_LIMIT;
 	// v2 highlights replace the short result snippet with page excerpts that can run past
 	// 10KB per result; keep v1-sized snippets unless the caller opts in.
@@ -517,6 +525,7 @@ const searchParams = Type.Object(
 			Type.String({ description: 'Time filter, e.g. "qdr:d" (day), "qdr:w" (week), "qdr:m" (month).' }),
 		),
 		location: Type.Optional(Type.String({ description: 'Geo-target, e.g. "San Francisco,California,United States".' })),
+		lang: Type.Optional(Type.String({ description: 'Language code for results (default "en").' })),
 		country: Type.Optional(Type.String({ description: 'ISO country code, e.g. "US".' })),
 		highlights: Type.Optional(
 			Type.Boolean({

@@ -124,6 +124,7 @@ Search the web and optionally scrape results.
 | `sources` | Result types: `web`, `news`, `images` | `["web"]` |
 | `tbs` | Time filter (e.g. `qdr:d`, `qdr:w`) | — |
 | `location` | Geo-target location string | — |
+| `lang` | Language code | `en` |
 | `country` | ISO country code | — |
 | `highlights` | Replace short snippets with query-relevant page excerpts (much larger output) | `false` |
 | `scrapeOptions` | Scrape options for results | — |
@@ -184,12 +185,12 @@ If none exist, the extension writes a default config to the global path (`<agent
 
 ## API Version
 
-The tools call Firecrawl's v2 endpoints (`/v2/scrape`, `/v2/map`, `/v2/search`). The configured `url` is the API host; a trailing `/v1` or `/v2` is ignored. Self-hosted instances must serve the v2 API.
+The tools call Firecrawl's v2 endpoints (`/v2/scrape`, `/v2/map`, `/v2/search`). The configured `url` is the service root and `/v2/...` is appended to it as given, so self-hosted instances mounted under a path keep working; they must serve the v2 API. On the hosted API only (`api.firecrawl.dev`), a pasted trailing `/v1` or `/v2` is dropped.
 
 Differences from the v1-based releases (1.1.0 and earlier), as of 1.2.0:
 
 - **Search output** is an object grouped by source (`{ "web": [...] }`, plus `news`/`images` when requested) instead of a bare array.
-- **Search `lang`** no longer exists in v2 and is dropped; use `country`/`location`. The default `limit` stays at 5 (v2's own default is 10).
+- **Search default limit:** the default `limit` stays at 5 (v2's own default is 10).
 - **Search `highlights`** defaults to `false`. v2 turns highlights on by default, which replaces the short snippet with page excerpts that can exceed 10KB per result; pass `highlights: true` to opt in.
 - **Scrape caching**: v2 serves cached pages up to 2 days old by default. Pass `maxAge: 0` for a fresh scrape.
 - **v1 argument shapes are translated** so older prompts keep working: `screenshot@fullPage`, `extract`/`jsonOptions`, `changeTrackingOptions`, `parsePDF: false`, `geolocation`, and map `ignoreSitemap`/`sitemapOnly`. Map `maxDepth` and `allowBackwardLinks` have no v2 equivalent and are dropped.
