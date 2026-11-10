@@ -177,7 +177,7 @@ describe("pi-firecrawl helpers", () => {
 		);
 	});
 
-	it("migrates v1 search arguments to v2 and keeps the default limit of 5", () => {
+	it("migrates v1 search arguments to v2 and keeps v1-sized defaults", () => {
 		expect(
 			migrateLegacyArgs("firecrawl_search", {
 				query: "pi agent",
@@ -187,11 +187,13 @@ describe("pi-firecrawl helpers", () => {
 		).toEqual({
 			query: "pi agent",
 			limit: 5,
+			highlights: false,
 			scrapeOptions: { formats: [{ type: "screenshot", fullPage: true }] },
 		});
-		expect(migrateLegacyArgs("firecrawl_search", { query: "pi agent", limit: 20 })).toEqual({
+		expect(migrateLegacyArgs("firecrawl_search", { query: "pi agent", limit: 20, highlights: true })).toEqual({
 			query: "pi agent",
 			limit: 20,
+			highlights: true,
 		});
 	});
 

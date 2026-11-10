@@ -224,6 +224,9 @@ function migrateLegacyArgs(toolName: FirecrawlToolName, args: Record<string, unk
 	// v2 search has no `lang`; language follows `country`/`location`.
 	const { lang: _lang, ...rest } = args;
 	if (rest.limit === undefined) rest.limit = DEFAULT_SEARCH_LIMIT;
+	// v2 highlights replace the short result snippet with page excerpts that can run past
+	// 10KB per result; keep v1-sized snippets unless the caller opts in.
+	if (rest.highlights === undefined) rest.highlights = false;
 	if (isRecord(rest.scrapeOptions)) rest.scrapeOptions = migrateScrapeOptions(rest.scrapeOptions);
 	return rest;
 }
@@ -515,6 +518,12 @@ const searchParams = Type.Object(
 		),
 		location: Type.Optional(Type.String({ description: 'Geo-target, e.g. "San Francisco,California,United States".' })),
 		country: Type.Optional(Type.String({ description: 'ISO country code, e.g. "US".' })),
+		highlights: Type.Optional(
+			Type.Boolean({
+				description:
+					"Replace short result snippets with query-relevant page excerpts (much larger output). Default false.",
+			}),
+		),
 		scrapeOptions: Type.Optional(Type.Object({}, { additionalProperties: true })),
 		...piLimitFields,
 	},

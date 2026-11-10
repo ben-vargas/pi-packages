@@ -125,6 +125,7 @@ Search the web and optionally scrape results.
 | `tbs` | Time filter (e.g. `qdr:d`, `qdr:w`) | — |
 | `location` | Geo-target location string | — |
 | `country` | ISO country code | — |
+| `highlights` | Replace short snippets with query-relevant page excerpts (much larger output) | `false` |
 | `scrapeOptions` | Scrape options for results | — |
 | `piMaxBytes` | Client-side max bytes override | — |
 | `piMaxLines` | Client-side max lines override | — |
@@ -189,6 +190,7 @@ Differences from the v1-based releases (1.1.0 and earlier), as of 1.2.0:
 
 - **Search output** is an object grouped by source (`{ "web": [...] }`, plus `news`/`images` when requested) instead of a bare array.
 - **Search `lang`** no longer exists in v2 and is dropped; use `country`/`location`. The default `limit` stays at 5 (v2's own default is 10).
+- **Search `highlights`** defaults to `false`. v2 turns highlights on by default, which replaces the short snippet with page excerpts that can exceed 10KB per result; pass `highlights: true` to opt in.
 - **Scrape caching**: v2 serves cached pages up to 2 days old by default. Pass `maxAge: 0` for a fresh scrape.
 - **v1 argument shapes are translated** so older prompts keep working: `screenshot@fullPage`, `extract`/`jsonOptions`, `changeTrackingOptions`, `parsePDF: false`, `geolocation`, and map `ignoreSitemap`/`sitemapOnly`. Map `maxDepth` and `allowBackwardLinks` have no v2 equivalent and are dropped.
 

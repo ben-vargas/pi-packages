@@ -230,7 +230,7 @@ describe("pi-firecrawl", () => {
 				"https://api.firecrawl.dev/v2/search",
 			]);
 			const searchBody = JSON.parse(String(fetchSpy.mock.calls[2]?.[1]?.body));
-			expect(searchBody).toEqual({ query: "example", limit: 5 });
+			expect(searchBody).toEqual({ query: "example", limit: 5, highlights: false });
 		} finally {
 			fetchSpy.mockRestore();
 			if (previousTools === undefined) delete process.env.FIRECRAWL_TOOLS;
