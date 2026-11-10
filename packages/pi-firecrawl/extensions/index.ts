@@ -14,7 +14,10 @@ import type { Static, TObject } from "typebox";
 import { Type } from "typebox";
 
 const DEFAULT_BASE_URL = "https://api.firecrawl.dev";
+const API_VERSION_PATH = "/v2";
 const DEFAULT_TIMEOUT_MS = 30000;
+// v2 raised the search default from 5 to 10 results; keep the smaller v1 default to protect context.
+const DEFAULT_SEARCH_LIMIT = 5;
 const CONFIG_FILENAME = "firecrawl.json";
 const DEFAULT_CONFIG_FILE: Record<string, unknown> = {
 	url: DEFAULT_BASE_URL,
@@ -53,6 +56,8 @@ interface FirecrawlResponse {
 	error?: string;
 	[key: string]: unknown;
 }
+
+type FirecrawlToolName = "firecrawl_scrape" | "firecrawl_map" | "firecrawl_search";
 
 interface ToolOutputDetails {
 	tool: string;
@@ -159,6 +164,68 @@ function splitParams(params: Record<string, unknown>): {
 			maxLines: normalizeNumber(piMaxLines),
 		},
 	};
+}
+
+// Accepts base URLs with or without a trailing version segment, so a config that pinned
+// ".../v1" keeps working after the v1 shutdown instead of resolving to ".../v1/v2/...".
+function buildApiUrl(baseUrl: string, path: string): string {
+	const root = baseUrl.replace(/\/+$/, "").replace(/\/v[12]$/i, "");
+	return `${root}${API_VERSION_PATH}${path}`;
+}
+
+// Rewrites v1 scrape options into their v2 equivalents (formats, parsePDF, geolocation).
+function migrateScrapeOptions(options: Record<string, unknown>): Record<string, unknown> {
+	const {
+		extract,
+		jsonOptions,
+		changeTrackingOptions,
+		parsePDF,
+		geolocation,
+		__experimental_cache: _removedCache,
+		...rest
+	} = options;
+	const jsonConfig = isRecord(jsonOptions) ? jsonOptions : isRecord(extract) ? extract : undefined;
+
+	if (Array.isArray(rest.formats)) {
+		rest.formats = rest.formats.map((format) => {
+			if (format === "screenshot@fullPage") return { type: "screenshot", fullPage: true };
+			if ((format === "extract" || format === "json") && jsonConfig) {
+				const { systemPrompt, prompt, ...jsonRest } = jsonConfig;
+				// v2 rejects systemPrompt; fold it into prompt.
+				const mergedPrompt = [systemPrompt, prompt].filter((part) => typeof part === "string" && part).join("\n\n");
+				return { type: "json", ...jsonRest, ...(mergedPrompt ? { prompt: mergedPrompt } : {}) };
+			}
+			if (format === "extract") return "json";
+			if (format === "changeTracking" && isRecord(changeTrackingOptions)) {
+				return { type: "changeTracking", ...changeTrackingOptions };
+			}
+			return format;
+		});
+	}
+	if (parsePDF === false && rest.parsers === undefined) rest.parsers = [];
+	if (geolocation !== undefined && rest.location === undefined) rest.location = geolocation;
+	return rest;
+}
+
+// Models (and saved prompts) still emit v1 argument shapes; translate them so calls keep
+// working against the v2 API, which rejects the old names.
+function migrateLegacyArgs(toolName: FirecrawlToolName, args: Record<string, unknown>): Record<string, unknown> {
+	if (toolName === "firecrawl_scrape") return migrateScrapeOptions(args);
+
+	if (toolName === "firecrawl_map") {
+		const { ignoreSitemap, sitemapOnly, maxDepth: _maxDepth, allowBackwardLinks: _backwardLinks, ...rest } = args;
+		if (rest.sitemap === undefined) {
+			if (sitemapOnly === true) rest.sitemap = "only";
+			else if (ignoreSitemap === true) rest.sitemap = "skip";
+		}
+		return rest;
+	}
+
+	// v2 search has no `lang`; language follows `country`/`location`.
+	const { lang: _lang, ...rest } = args;
+	if (rest.limit === undefined) rest.limit = DEFAULT_SEARCH_LIMIT;
+	if (isRecord(rest.scrapeOptions)) rest.scrapeOptions = migrateScrapeOptions(rest.scrapeOptions);
+	return rest;
 }
 
 function resolveMaxLimits(config: FirecrawlRequestConfig): { maxBytes: number; maxLines: number } {
@@ -314,7 +381,7 @@ async function firecrawlFetch(
 	body: Record<string, unknown> | undefined,
 	signal?: AbortSignal,
 ): Promise<FirecrawlResponse> {
-	const url = `${config.baseUrl.replace(/\/+$/, "")}${path}`;
+	const url = buildApiUrl(config.baseUrl, path);
 	const controller = new AbortController();
 	let timeoutId: NodeJS.Timeout | undefined;
 
@@ -355,12 +422,14 @@ async function firecrawlFetch(
 	}
 }
 
-function formatResponse(
-	toolName: "firecrawl_scrape" | "firecrawl_map" | "firecrawl_search",
-	response: FirecrawlResponse,
-): string {
+function formatResponse(toolName: FirecrawlToolName, response: FirecrawlResponse): string {
 	if (toolName === "firecrawl_map") {
-		if (Array.isArray(response.links)) return response.links.join("\n");
+		if (Array.isArray(response.links)) {
+			// v2 returns { url, title?, description? } objects; v1 returned bare strings.
+			return response.links
+				.map((link) => (isRecord(link) && typeof link.url === "string" ? link.url : toJsonString(link)))
+				.join("\n");
+		}
 		return toJsonString(response);
 	}
 
@@ -392,8 +461,20 @@ const piLimitFields = {
 const scrapeParams = Type.Object(
 	{
 		url: Type.String({ description: "Target URL." }),
-		formats: Type.Optional(Type.Array(Type.String())),
+		formats: Type.Optional(
+			Type.Array(Type.Union([Type.String(), Type.Object({}, { additionalProperties: true })]), {
+				description:
+					'Output formats: strings such as "markdown", "html", "links", "summary", or objects such as ' +
+					'{ "type": "json", "prompt": "...", "schema": {...} } and { "type": "screenshot", "fullPage": true }.',
+			}),
+		),
 		onlyMainContent: Type.Optional(Type.Boolean()),
+		maxAge: Type.Optional(
+			Type.Integer({
+				description:
+					"Accept a cached copy up to this many milliseconds old (default 2 days). Use 0 to force a fresh scrape.",
+			}),
+		),
 		waitFor: Type.Optional(Type.Integer()),
 		timeout: Type.Optional(Type.Integer()),
 		mobile: Type.Optional(Type.Boolean()),
@@ -421,9 +502,19 @@ const mapParams = Type.Object(
 const searchParams = Type.Object(
 	{
 		query: Type.String({ description: "Search query." }),
-		limit: Type.Optional(Type.Integer()),
-		lang: Type.Optional(Type.String()),
-		country: Type.Optional(Type.String()),
+		limit: Type.Optional(
+			Type.Integer({ description: `Maximum results per source (default ${DEFAULT_SEARCH_LIMIT}).` }),
+		),
+		sources: Type.Optional(
+			Type.Array(StringEnum(["web", "news", "images"] as const), {
+				description: 'Result types to return (default ["web"]).',
+			}),
+		),
+		tbs: Type.Optional(
+			Type.String({ description: 'Time filter, e.g. "qdr:d" (day), "qdr:w" (week), "qdr:m" (month).' }),
+		),
+		location: Type.Optional(Type.String({ description: 'Geo-target, e.g. "San Francisco,California,United States".' })),
+		country: Type.Optional(Type.String({ description: 'ISO country code, e.g. "US".' })),
 		scrapeOptions: Type.Optional(Type.Object({}, { additionalProperties: true })),
 		...piLimitFields,
 	},
@@ -431,9 +522,12 @@ const searchParams = Type.Object(
 );
 
 export {
+	buildApiUrl,
 	CONFIG_FILENAME,
 	DEFAULT_CONFIG_FILE,
 	ensureDefaultConfigFile,
+	formatResponse,
+	migrateLegacyArgs,
 	normalizeHeaders,
 	normalizeNumber,
 	normalizeTools,
@@ -525,7 +619,7 @@ export default function piFirecrawl(pi: ExtensionAPI) {
 		: null;
 
 	const registerTool = <TParams extends TObject>(
-		name: "firecrawl_scrape" | "firecrawl_map" | "firecrawl_search",
+		name: FirecrawlToolName,
 		label: string,
 		description: string,
 		promptSnippet: string,
@@ -556,7 +650,7 @@ export default function piFirecrawl(pi: ExtensionAPI) {
 				const effectiveLimits = resolveEffectiveLimits(requestedLimits, maxLimits);
 
 				try {
-					const response = await firecrawlFetch(config, path, apiArgs, signal);
+					const response = await firecrawlFetch(config, path, migrateLegacyArgs(name, apiArgs), signal);
 					const responseText = formatResponse(name, response);
 					const { text, details } = formatToolOutput(name, safeBaseUrl, responseText, effectiveLimits);
 					return { content: [{ type: "text", text }], details };
@@ -576,7 +670,7 @@ export default function piFirecrawl(pi: ExtensionAPI) {
 		"Scrape a single URL. Best when you already know the page to read. Client-side truncation; override with piMaxBytes/piMaxLines (clamped by config).",
 		"firecrawl_scrape: scrape a known URL and return page content.",
 		scrapeParams,
-		"/v1/scrape",
+		"/scrape",
 	);
 
 	registerTool(
@@ -585,15 +679,15 @@ export default function piFirecrawl(pi: ExtensionAPI) {
 		"Discover URLs on a site. Use before selecting pages to scrape. Client-side truncation; override with piMaxBytes/piMaxLines (clamped by config).",
 		"firecrawl_map: discover crawlable URLs for a site.",
 		mapParams,
-		"/v1/map",
+		"/map",
 	);
 
 	registerTool(
 		"firecrawl_search",
 		"Firecrawl Search",
-		"Search the web and optionally scrape search results. Client-side truncation; override with piMaxBytes/piMaxLines (clamped by config).",
+		"Search the web (results grouped under web/news/images) and optionally scrape search results. Client-side truncation; override with piMaxBytes/piMaxLines (clamped by config).",
 		"firecrawl_search: search the web and optionally scrape search results.",
 		searchParams,
-		"/v1/search",
+		"/search",
 	);
 }

@@ -200,4 +200,42 @@ describe("pi-firecrawl", () => {
 			}
 		}
 	});
+
+	it("calls the v2 endpoints", async () => {
+		const previousTools = process.env.FIRECRAWL_TOOLS;
+		const previousUrl = process.env.FIRECRAWL_URL;
+		process.env.FIRECRAWL_TOOLS = "";
+		delete process.env.FIRECRAWL_URL;
+
+		const fetchSpy = vi
+			.spyOn(globalThis, "fetch")
+			.mockImplementation(async () => new Response(JSON.stringify({ success: true, data: { web: [] } })));
+
+		try {
+			const mockPi = createMockPi();
+			piFirecrawl(mockPi as unknown as ExtensionAPI);
+			const ctx = { hasUI: false } as unknown as ExtensionContext;
+			const calls: Record<string, Record<string, unknown>> = {
+				firecrawl_scrape: { url: "https://example.com" },
+				firecrawl_map: { url: "https://example.com" },
+				firecrawl_search: { query: "example", lang: "en" },
+			};
+			for (const [tool] of mockPi.registerTool.mock.calls) {
+				await tool.execute("call-1", calls[tool.name], undefined, undefined, ctx);
+			}
+
+			expect(fetchSpy.mock.calls.map(([url]) => url)).toEqual([
+				"https://api.firecrawl.dev/v2/scrape",
+				"https://api.firecrawl.dev/v2/map",
+				"https://api.firecrawl.dev/v2/search",
+			]);
+			const searchBody = JSON.parse(String(fetchSpy.mock.calls[2]?.[1]?.body));
+			expect(searchBody).toEqual({ query: "example", limit: 5 });
+		} finally {
+			fetchSpy.mockRestore();
+			if (previousTools === undefined) delete process.env.FIRECRAWL_TOOLS;
+			else process.env.FIRECRAWL_TOOLS = previousTools;
+			if (previousUrl !== undefined) process.env.FIRECRAWL_URL = previousUrl;
+		}
+	});
 });

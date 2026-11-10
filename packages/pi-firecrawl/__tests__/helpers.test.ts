@@ -3,9 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
+	buildApiUrl,
 	CONFIG_FILENAME,
 	DEFAULT_CONFIG_FILE,
 	ensureDefaultConfigFile,
+	formatResponse,
+	migrateLegacyArgs,
 	normalizeHeaders,
 	normalizeNumber,
 	normalizeTools,
@@ -123,5 +126,86 @@ describe("pi-firecrawl helpers", () => {
 		} finally {
 			warnSpy.mockRestore();
 		}
+	});
+
+	it("builds v2 URLs regardless of a trailing slash or version segment", () => {
+		expect(buildApiUrl("https://api.firecrawl.dev", "/scrape")).toBe("https://api.firecrawl.dev/v2/scrape");
+		expect(buildApiUrl("https://api.firecrawl.dev/", "/map")).toBe("https://api.firecrawl.dev/v2/map");
+		expect(buildApiUrl("https://api.firecrawl.dev/v1", "/search")).toBe("https://api.firecrawl.dev/v2/search");
+		expect(buildApiUrl("http://localhost:3002/v2/", "/scrape")).toBe("http://localhost:3002/v2/scrape");
+	});
+
+	it("migrates v1 scrape arguments to v2", () => {
+		expect(
+			migrateLegacyArgs("firecrawl_scrape", {
+				url: "https://a.com",
+				formats: ["markdown", "screenshot@fullPage", "extract"],
+				extract: { systemPrompt: "Be terse.", prompt: "Get the title", schema: { type: "object" } },
+				parsePDF: false,
+				geolocation: { country: "DE" },
+				__experimental_cache: true,
+			}),
+		).toEqual({
+			url: "https://a.com",
+			formats: [
+				"markdown",
+				{ type: "screenshot", fullPage: true },
+				{ type: "json", prompt: "Be terse.\n\nGet the title", schema: { type: "object" } },
+			],
+			parsers: [],
+			location: { country: "DE" },
+		});
+
+		// v2-shaped arguments pass through untouched.
+		const v2Args = { url: "https://a.com", formats: ["markdown", { type: "json", prompt: "x" }], maxAge: 0 };
+		expect(migrateLegacyArgs("firecrawl_scrape", v2Args)).toEqual(v2Args);
+	});
+
+	it("migrates v1 map arguments to v2", () => {
+		expect(
+			migrateLegacyArgs("firecrawl_map", { url: "https://a.com", ignoreSitemap: true, maxDepth: 2, limit: 10 }),
+		).toEqual({ url: "https://a.com", sitemap: "skip", limit: 10 });
+		expect(migrateLegacyArgs("firecrawl_map", { url: "https://a.com", sitemapOnly: true })).toEqual({
+			url: "https://a.com",
+			sitemap: "only",
+		});
+		expect(migrateLegacyArgs("firecrawl_map", { url: "https://a.com", sitemap: "include", sitemapOnly: true })).toEqual(
+			{
+				url: "https://a.com",
+				sitemap: "include",
+			},
+		);
+	});
+
+	it("migrates v1 search arguments to v2 and keeps the default limit of 5", () => {
+		expect(
+			migrateLegacyArgs("firecrawl_search", {
+				query: "pi agent",
+				lang: "en",
+				scrapeOptions: { formats: ["screenshot@fullPage"] },
+			}),
+		).toEqual({
+			query: "pi agent",
+			limit: 5,
+			scrapeOptions: { formats: [{ type: "screenshot", fullPage: true }] },
+		});
+		expect(migrateLegacyArgs("firecrawl_search", { query: "pi agent", limit: 20 })).toEqual({
+			query: "pi agent",
+			limit: 20,
+		});
+	});
+
+	it("formats v2 map link objects as one URL per line", () => {
+		expect(
+			formatResponse("firecrawl_map", {
+				success: true,
+				links: [{ url: "https://a.com/", title: "A" }, { url: "https://a.com/docs" }, "https://a.com/legacy"],
+			}),
+		).toBe("https://a.com/\nhttps://a.com/docs\nhttps://a.com/legacy");
+	});
+
+	it("formats v2 search results grouped by source", () => {
+		const data = { web: [{ url: "https://a.com", title: "A", description: "d" }] };
+		expect(JSON.parse(formatResponse("firecrawl_search", { success: true, data }))).toEqual(data);
 	});
 });
