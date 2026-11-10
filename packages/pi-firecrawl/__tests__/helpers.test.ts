@@ -167,6 +167,33 @@ describe("pi-firecrawl helpers", () => {
 		expect(migrateLegacyArgs("firecrawl_scrape", v2Args)).toEqual(v2Args);
 	});
 
+	it("drops v1-only extraction fields that the strict v2 format objects reject", () => {
+		const jsonOptions = { mode: "llm", temperature: 0, prompt: "Get the title", schema: { type: "object" } };
+		const expected = { type: "json", schema: { type: "object" }, prompt: "Get the title" };
+
+		expect(migrateLegacyArgs("firecrawl_scrape", { url: "https://a.com", formats: ["json"], jsonOptions })).toEqual({
+			url: "https://a.com",
+			formats: [expected],
+		});
+		expect(
+			migrateLegacyArgs("firecrawl_search", {
+				query: "q",
+				limit: 1,
+				scrapeOptions: { formats: ["json"], jsonOptions },
+			}),
+		).toMatchObject({ scrapeOptions: { formats: [expected] } });
+		expect(
+			migrateLegacyArgs("firecrawl_scrape", {
+				url: "https://a.com",
+				formats: ["markdown", "changeTracking"],
+				changeTrackingOptions: { modes: ["git-diff"], tag: "prod", unknown: true },
+			}),
+		).toEqual({
+			url: "https://a.com",
+			formats: ["markdown", { type: "changeTracking", modes: ["git-diff"], tag: "prod" }],
+		});
+	});
+
 	it("migrates v1 map arguments to v2", () => {
 		expect(
 			migrateLegacyArgs("firecrawl_map", { url: "https://a.com", ignoreSitemap: true, maxDepth: 2, limit: 10 }),

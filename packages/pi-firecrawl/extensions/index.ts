@@ -182,6 +182,14 @@ function buildApiUrl(baseUrl: string, path: string): string {
 	return `${root}${API_VERSION_PATH}${path}`;
 }
 
+function pickDefined(source: Record<string, unknown>, keys: string[]): Record<string, unknown> {
+	const picked: Record<string, unknown> = {};
+	for (const key of keys) {
+		if (source[key] !== undefined) picked[key] = source[key];
+	}
+	return picked;
+}
+
 // Rewrites v1 scrape options into their v2 equivalents (formats, parsePDF, geolocation).
 function migrateScrapeOptions(options: Record<string, unknown>): Record<string, unknown> {
 	const {
@@ -199,14 +207,19 @@ function migrateScrapeOptions(options: Record<string, unknown>): Record<string, 
 		rest.formats = rest.formats.map((format) => {
 			if (format === "screenshot@fullPage") return { type: "screenshot", fullPage: true };
 			if ((format === "extract" || format === "json") && jsonConfig) {
-				const { systemPrompt, prompt, ...jsonRest } = jsonConfig;
-				// v2 rejects systemPrompt; fold it into prompt.
+				// v2 format objects are strict: copy only the fields v2 accepts, so v1-only ones
+				// (mode, temperature) do not fail the request. systemPrompt is folded into prompt.
+				const { systemPrompt, prompt } = jsonConfig;
 				const mergedPrompt = [systemPrompt, prompt].filter((part) => typeof part === "string" && part).join("\n\n");
-				return { type: "json", ...jsonRest, ...(mergedPrompt ? { prompt: mergedPrompt } : {}) };
+				return {
+					type: "json",
+					...pickDefined(jsonConfig, ["schema", "model", "checkPromptInjection"]),
+					...(mergedPrompt ? { prompt: mergedPrompt } : {}),
+				};
 			}
 			if (format === "extract") return "json";
 			if (format === "changeTracking" && isRecord(changeTrackingOptions)) {
-				return { type: "changeTracking", ...changeTrackingOptions };
+				return { type: "changeTracking", ...pickDefined(changeTrackingOptions, ["modes", "schema", "prompt", "tag"]) };
 			}
 			return format;
 		});
