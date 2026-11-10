@@ -2,7 +2,7 @@
 
 Firecrawl tools for [pi](https://github.com/badlogic/pi-mono), the AI coding agent.
 
-Provides focused Firecrawl REST API access for:
+Provides focused Firecrawl REST API (v2) access for:
 
 - `firecrawl_scrape`
 - `firecrawl_map`
@@ -16,7 +16,9 @@ Provides focused Firecrawl REST API access for:
 - **Tool allowlist** — Enable/disable tools via `tools` config
 - **Configurable limits** — Client-side truncation with configurable max bytes/lines
 - **Multiple config sources** — JSON config, environment variables, or CLI flags
-- **Direct REST API** — Simple, fast, no protocol overhead
+- **Direct REST API** — Simple, fast, no protocol overhead; targets Firecrawl API v2
+
+> **Firecrawl v1 shutdown:** Firecrawl's v1 API stops working on December 10, 2026 (15:00 UTC). pi-firecrawl 1.2.0 and later call v2; upgrade before that date. See [API Version](#api-version).
 
 ## Installation
 
@@ -84,8 +86,9 @@ Scrape a single URL.
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `url` | Target URL (required) | — |
-| `formats` | Output formats array | — |
+| `formats` | Output formats: strings (`markdown`, `html`, `links`, `summary`, ...) or objects (`{ "type": "json", "prompt", "schema" }`, `{ "type": "screenshot", "fullPage": true }`) | `["markdown"]` |
 | `onlyMainContent` | Extract only main content | — |
+| `maxAge` | Accept a cached copy up to this many milliseconds old; `0` forces a fresh scrape | 2 days |
 | `waitFor` | Wait time in milliseconds | — |
 | `timeout` | Request timeout | — |
 | `mobile` | Use mobile viewport | — |
@@ -117,9 +120,13 @@ Search the web and optionally scrape results.
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `query` | Search query (required) | — |
-| `limit` | Maximum results | — |
-| `lang` | Language code | — |
-| `country` | Country code | — |
+| `limit` | Maximum results per source | `5` |
+| `sources` | Result types: `web`, `news`, `images` | `["web"]` |
+| `tbs` | Time filter (e.g. `qdr:d`, `qdr:w`) | — |
+| `location` | Geo-target location string | — |
+| `lang` | Language code | `en` |
+| `country` | ISO country code | — |
+| `highlights` | Replace short snippets with query-relevant page excerpts (much larger output) | `false` |
 | `scrapeOptions` | Scrape options for results | — |
 | `piMaxBytes` | Client-side max bytes override | — |
 | `piMaxLines` | Client-side max lines override | — |
@@ -175,6 +182,18 @@ If none exist, the extension writes a default config to the global path (`<agent
 | `--firecrawl-tools` | Comma-separated tool list |
 | `--firecrawl-max-bytes` | Max bytes to keep from output |
 | `--firecrawl-max-lines` | Max lines to keep from output |
+
+## API Version
+
+The tools call Firecrawl's v2 endpoints (`/v2/scrape`, `/v2/map`, `/v2/search`). The configured `url` is the service root and `/v2/...` is appended to it as given, so self-hosted instances mounted under a path keep working; they must serve the v2 API. On the hosted API only (`api.firecrawl.dev`), a pasted trailing `/v1` or `/v2` is dropped.
+
+Differences from the v1-based releases (1.1.0 and earlier), as of 1.2.0:
+
+- **Search output** is an object grouped by source (`{ "web": [...] }`, plus `news`/`images` when requested) instead of a bare array.
+- **Search default limit:** the default `limit` stays at 5 (v2's own default is 10).
+- **Search `highlights`** defaults to `false`. v2 turns highlights on by default, which replaces the short snippet with page excerpts that can exceed 10KB per result; pass `highlights: true` to opt in.
+- **Scrape caching**: v2 serves cached pages up to 2 days old by default. Pass `maxAge: 0` for a fresh scrape.
+- **v1 argument shapes are translated** so older prompts keep working: `screenshot@fullPage`, `extract`/`jsonOptions`, `changeTrackingOptions`, `parsePDF: false`, `geolocation`, and map `ignoreSitemap`/`sitemapOnly`. Map `maxDepth` and `allowBackwardLinks` have no v2 equivalent and are dropped.
 
 ## Output Truncation
 
