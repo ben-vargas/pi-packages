@@ -1,5 +1,8 @@
 # @benvargas/pi-firecrawl
 
+> [!WARNING]
+> **Deprecated.** Pi has built-in MCP support since Pi 0.99.0, and Firecrawl runs a hosted MCP server, so this extension is no longer needed. It still works and targets Firecrawl API v2, but it will not receive new features. Use Pi's MCP support instead: see [Migrating to Pi's MCP support](#migrating-to-pis-mcp-support).
+
 Firecrawl tools for [pi](https://github.com/badlogic/pi-mono), the AI coding agent.
 
 Provides focused Firecrawl REST API (v2) access for:
@@ -7,6 +10,39 @@ Provides focused Firecrawl REST API (v2) access for:
 - `firecrawl_scrape`
 - `firecrawl_map`
 - `firecrawl_search`
+
+## Migrating to Pi's MCP support
+
+Requires Pi 0.99.0 or later. Add Firecrawl's hosted MCP server to `~/.pi/agent/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "firecrawl": {
+      "url": "https://mcp.firecrawl.dev/v2/mcp",
+      "headers": { "Authorization": "Bearer ${FIRECRAWL_API_KEY}" },
+      "toolExposure": { "firecrawl_scrape": "direct", "firecrawl_map": "direct" }
+    }
+  }
+}
+```
+
+Then remove this extension so the tools are not registered twice:
+
+```bash
+pi remove npm:@benvargas/pi-firecrawl
+```
+
+If you installed the whole `pi-packages` repository from git, there is nothing to remove: the repository no longer loads this extension, so run `pi update`.
+
+Run `pi mcp list` to confirm the server connects. What changes:
+
+- Tools are named `mcp__firecrawl__<tool>`, for example `mcp__firecrawl__firecrawl_scrape`.
+- The server offers many more tools than this extension (crawl, agent, research and others). With the config above, scrape and map are declared to the model directly and the rest are reachable through Pi's `codemode` tool. Add more tools to `toolExposure`, or set `"exposure": "direct"` to declare them all.
+- Firecrawl's own parameter schemas and defaults apply. This extension's defaults (search `limit` of 5, `highlights` off) and its `piMaxBytes` / `piMaxLines` parameters do not; Pi shortens MCP text results over 20 KB.
+- The `firecrawl.json` config file and the `--firecrawl-*` flags are no longer read.
+
+See Pi's [MCP documentation](https://pi.dev/docs/latest/mcp) for exposure modes, authentication, and project-level configuration.
 
 ## Features
 

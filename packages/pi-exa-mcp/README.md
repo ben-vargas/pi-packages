@@ -1,8 +1,41 @@
 # @benvargas/pi-exa-mcp
 
+> [!WARNING]
+> **Deprecated.** Pi has built-in MCP support since Pi 0.99.0, so it can connect to Exa's MCP server directly and this extension is no longer needed. It still works, but it will not receive new features. Use Pi's MCP support instead: see [Migrating to Pi's MCP support](#migrating-to-pis-mcp-support).
+
 Exa MCP tools for [pi](https://github.com/badlogic/pi-mono), the AI coding agent.
 
 Provides real-time web search and code/documentation search via [Exa's](https://exa.ai) Model Context Protocol (MCP) over HTTP.
+
+## Migrating to Pi's MCP support
+
+Requires Pi 0.99.0 or later. Add Exa's MCP server to `~/.pi/agent/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "exa": { "url": "https://mcp.exa.ai/mcp", "exposure": "direct" }
+  }
+}
+```
+
+Then remove this extension so the tools are not registered twice:
+
+```bash
+pi remove npm:@benvargas/pi-exa-mcp
+```
+
+If you installed the whole `pi-packages` repository from git, there is nothing to remove: the repository no longer loads this extension, so run `pi update`.
+
+Run `pi mcp list` to confirm the server connects. What changes:
+
+- Tools are named `mcp__exa__<tool>`, for example `mcp__exa__web_search_exa`.
+- The tool set is whatever Exa's server lists, currently `web_search_exa` and `web_fetch_exa`.
+- No API key is needed for Exa's free rate limit. To use your own key, add `"headers": { "x-api-key": "${EXA_API_KEY}" }`.
+- The `piMaxBytes` / `piMaxLines` parameters do not apply; Pi shortens MCP text results over 20 KB.
+- The `exa-mcp.json` config file and the `--exa-mcp-*` flags are no longer read.
+
+See Pi's [MCP documentation](https://pi.dev/docs/latest/mcp) for exposure modes, authentication, and project-level configuration.
 
 ## Features
 
