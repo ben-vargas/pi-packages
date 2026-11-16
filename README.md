@@ -8,7 +8,7 @@ Pi packages can include extensions, skills, prompt templates, and themes. See th
 
 | Package | Type | Description |
 |---------|------|-------------|
-| [@benvargas/pi-synthetic-provider](./packages/pi-synthetic-provider/) | Extension | [Synthetic](https://synthetic.new) model provider (Kimi, GLM, MiniMax, Qwen, Nemotron, gpt-oss) |
+| [@benvargas/pi-synthetic-provider](./packages/pi-synthetic-provider/) | Extension | [Synthetic](https://synthetic.new) model provider (Kimi, GLM, DeepSeek, Qwen, gpt-oss) |
 | [@benvargas/pi-antigravity-image-gen](./packages/pi-antigravity-image-gen/) | Extension | Antigravity image generation (Gemini 3 Pro, inline rendering) |
 | [@benvargas/pi-exa-mcp](./packages/pi-exa-mcp/) | Extension | **Deprecated**, use Pi's built-in MCP support. Exa MCP tools — web search + code context |
 | [@benvargas/pi-firecrawl](./packages/pi-firecrawl/) | Extension | **Deprecated**, use Pi's built-in MCP support. Firecrawl tools — scrape, map, search |

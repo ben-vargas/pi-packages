@@ -9,14 +9,24 @@ import type { SyntheticModel, SyntheticModelsResponse } from "./types.js";
 
 export const GLM_5_3_MODEL_ID = "hf:zai-org/GLM-5.3";
 export const GLM_5_3_FLASH_MODEL_ID = "hf:zai-org/GLM-5.3-Flash";
-export const DEEPSEEK_V4_1_FLASH_MODEL_ID = "hf:deepseek-ai/DeepSeek-V4.1-Flash";
 export const DEEPSEEK_V4_1_FLASH_1017_MODEL_ID = "hf:deepseek-ai/DeepSeek-V4.1-Flash-1017";
 export const GLM_4_7_FLASH_MODEL_ID = "hf:zai-org/GLM-4.7-Flash";
 export const GPT_OSS_120B_MODEL_ID = "hf:openai/gpt-oss-120b";
-export const KIMI_K3_MODEL_ID = "hf:moonshotai/Kimi-K3";
+export const KIMI_K3_1_PRO_MODEL_ID = "hf:moonshotai/Kimi-K3.1-Pro";
 export const QWEN_3_8_27B_MODEL_ID = "hf:Qwen/Qwen3.8-27B";
 export const INFINITE_SMALL_VISION_MODEL_ID = "infinite:small:vision";
-export const NEMOTRON_3_SUPER_MODEL_ID = "hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4";
+
+/**
+ * @deprecated Synthetic delisted Kimi K3 and serves this id with Kimi K3.1 Pro.
+ * Use {@link KIMI_K3_1_PRO_MODEL_ID}. Kept so existing imports keep loading.
+ */
+export const KIMI_K3_MODEL_ID = "hf:moonshotai/Kimi-K3";
+/**
+ * @deprecated Synthetic delisted the unpinned id and serves it with the 10/17
+ * snapshot. Use {@link DEEPSEEK_V4_1_FLASH_1017_MODEL_ID}. Kept so existing
+ * imports keep loading.
+ */
+export const DEEPSEEK_V4_1_FLASH_MODEL_ID = "hf:deepseek-ai/DeepSeek-V4.1-Flash";
 
 /**
  * Chat entries of pi's provider model config. Pi 0.99 widened
@@ -79,20 +89,18 @@ function createReasoningOverrides(efforts: readonly string[]): SyntheticModelOve
  * be fetched. Values mirror the authenticated catalog's
  * `reasoning_parameters.efforts`; live rows override these snapshots.
  *
- * Kimi K3, GLM 5.3, and GLM 5.3-Flash always reason and only accept `low`,
- * `high`, and `max`, so `off` is deliberately unavailable. Qwen 3.8-27B has no
- * `none` either and tops out at `xhigh`, so `off`, `high`, and `max` are
- * unavailable. DeepSeek V4.1-Flash and its 10/17 snapshot skip `medium`.
+ * Kimi K3.1 Pro, GLM 5.3, and GLM 5.3-Flash always reason and only accept
+ * `low`, `high`, and `max`, so `off` is deliberately unavailable. Qwen 3.8-27B
+ * has no `none` either and tops out at `xhigh`, so `off`, `high`, and `max` are
+ * unavailable. DeepSeek V4.1-Flash 10/17 skips `medium`.
  */
 const GLM_5_3_REASONING_OVERRIDES = createReasoningOverrides(["low", "high", "max"]);
 const GLM_5_3_FLASH_REASONING_OVERRIDES = createReasoningOverrides(["low", "high", "max"]);
-const DEEPSEEK_V4_1_FLASH_REASONING_OVERRIDES = createReasoningOverrides(["none", "low", "high", "xhigh", "max"]);
 const DEEPSEEK_V4_1_FLASH_1017_REASONING_OVERRIDES = createReasoningOverrides(["none", "low", "high", "xhigh", "max"]);
 const GLM_4_7_FLASH_REASONING_OVERRIDES = createReasoningOverrides(["none", "low", "medium", "high"]);
 const GPT_OSS_120B_REASONING_OVERRIDES = createReasoningOverrides(["none", "low", "medium", "high"]);
-const KIMI_K3_REASONING_OVERRIDES = createReasoningOverrides(["low", "high", "max"]);
+const KIMI_K3_1_PRO_REASONING_OVERRIDES = createReasoningOverrides(["low", "high", "max"]);
 const QWEN_3_8_27B_REASONING_OVERRIDES = createReasoningOverrides(["low", "medium", "xhigh"]);
-const NEMOTRON_3_SUPER_REASONING_OVERRIDES = createReasoningOverrides(["none", "low", "medium", "high"]);
 
 /**
  * A `Map` rather than a plain object: `REASONING_OVERRIDES[modelId]` on an object
@@ -102,13 +110,11 @@ const NEMOTRON_3_SUPER_REASONING_OVERRIDES = createReasoningOverrides(["none", "
 const REASONING_OVERRIDES = new Map<string, SyntheticModelOverrides>([
 	[GLM_5_3_MODEL_ID, GLM_5_3_REASONING_OVERRIDES],
 	[GLM_5_3_FLASH_MODEL_ID, GLM_5_3_FLASH_REASONING_OVERRIDES],
-	[DEEPSEEK_V4_1_FLASH_MODEL_ID, DEEPSEEK_V4_1_FLASH_REASONING_OVERRIDES],
 	[DEEPSEEK_V4_1_FLASH_1017_MODEL_ID, DEEPSEEK_V4_1_FLASH_1017_REASONING_OVERRIDES],
 	[GLM_4_7_FLASH_MODEL_ID, GLM_4_7_FLASH_REASONING_OVERRIDES],
 	[GPT_OSS_120B_MODEL_ID, GPT_OSS_120B_REASONING_OVERRIDES],
-	[KIMI_K3_MODEL_ID, KIMI_K3_REASONING_OVERRIDES],
+	[KIMI_K3_1_PRO_MODEL_ID, KIMI_K3_1_PRO_REASONING_OVERRIDES],
 	[QWEN_3_8_27B_MODEL_ID, QWEN_3_8_27B_REASONING_OVERRIDES],
-	[NEMOTRON_3_SUPER_MODEL_ID, NEMOTRON_3_SUPER_REASONING_OVERRIDES],
 ]);
 
 /** Synthetic's rotating permalink ids, e.g. `syn:large:vision`. */
@@ -288,17 +294,18 @@ export async function fetchSyntheticModels(
 /**
  * Fallback models if API fetch fails.
  * Data sourced from: authenticated GET https://api.synthetic.new/openai/v1/models
- * Model metadata last updated: 2026-10-25
- * Reasoning efforts last updated: 2026-10-25
+ * Model metadata last updated: 2026-11-16
+ * Reasoning efforts last updated: 2026-11-16
  *
  * Mirrors the live `always_on` catalog. The `syn:*` permalinks are stable
  * aliases Synthetic re-points as models rotate: `syn:large:vision` resolves to
- * Kimi K3, `syn:large:text` and `syn:small:vision` to DeepSeek V4.1-Flash 10/17,
+ * Kimi K3.1 Pro, `syn:large:text` and `syn:small:vision` to DeepSeek V4.1-Flash 10/17,
  * and `syn:small:text` to GLM 4.7-Flash. `infinite:small:vision` is a
  * zero-priced route that currently also serves DeepSeek V4.1-Flash 10/17.
  *
  * Pricing format: $/million tokens. `cacheRead` tracks the catalog's
- * `input_cache_reads` rate, which is well below the input rate on every model.
+ * `input_cache_reads` rate, which is well below the input rate on every model
+ * with a nonzero input price.
  *
  * The `syn:*` and `infinite:*` entries deliberately carry no `thinkingLevelMap`. Offline there is
  * no catalog row naming the permalink's current target, so any effort map here
@@ -345,9 +352,9 @@ export function getFallbackModels(): SyntheticModelConfig[] {
 			reasoning: true,
 			input: ["text", "image"],
 			cost: {
-				input: 3,
-				output: 15,
-				cacheRead: 0.45,
+				input: 2,
+				output: 10,
+				cacheRead: 0.2,
 				cacheWrite: 0,
 			},
 			contextWindow: 524288,
@@ -430,21 +437,6 @@ export function getFallbackModels(): SyntheticModelConfig[] {
 			...getSyntheticModelOverrides(GLM_5_3_FLASH_MODEL_ID),
 		},
 		{
-			id: DEEPSEEK_V4_1_FLASH_MODEL_ID,
-			name: "deepseek-ai/DeepSeek-V4.1-Flash",
-			reasoning: true,
-			input: ["text", "image"],
-			cost: {
-				input: 0.6,
-				output: 1.2,
-				cacheRead: 0.03,
-				cacheWrite: 0,
-			},
-			contextWindow: 524288,
-			maxTokens: 65536,
-			...getSyntheticModelOverrides(DEEPSEEK_V4_1_FLASH_MODEL_ID),
-		},
-		{
 			id: DEEPSEEK_V4_1_FLASH_1017_MODEL_ID,
 			name: "deepseek-ai/DeepSeek-V4.1-Flash-1017",
 			reasoning: true,
@@ -460,19 +452,19 @@ export function getFallbackModels(): SyntheticModelConfig[] {
 			...getSyntheticModelOverrides(DEEPSEEK_V4_1_FLASH_1017_MODEL_ID),
 		},
 		{
-			id: KIMI_K3_MODEL_ID,
-			name: "moonshotai/Kimi-K3",
+			id: KIMI_K3_1_PRO_MODEL_ID,
+			name: "moonshotai/Kimi-K3.1-Pro",
 			reasoning: true,
 			input: ["text", "image"],
 			cost: {
-				input: 3,
-				output: 15,
-				cacheRead: 0.45,
+				input: 2,
+				output: 10,
+				cacheRead: 0.2,
 				cacheWrite: 0,
 			},
 			contextWindow: 524288,
 			maxTokens: 65536,
-			...getSyntheticModelOverrides(KIMI_K3_MODEL_ID),
+			...getSyntheticModelOverrides(KIMI_K3_1_PRO_MODEL_ID),
 		},
 		{
 			id: QWEN_3_8_27B_MODEL_ID,
@@ -503,21 +495,6 @@ export function getFallbackModels(): SyntheticModelConfig[] {
 			contextWindow: 196608,
 			maxTokens: 65536,
 			...getSyntheticModelOverrides(GLM_4_7_FLASH_MODEL_ID),
-		},
-		{
-			id: NEMOTRON_3_SUPER_MODEL_ID,
-			name: "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4",
-			reasoning: true,
-			input: ["text"],
-			cost: {
-				input: 0.3,
-				output: 1,
-				cacheRead: 0.06,
-				cacheWrite: 0,
-			},
-			contextWindow: 262144,
-			maxTokens: 65536,
-			...getSyntheticModelOverrides(NEMOTRON_3_SUPER_MODEL_ID),
 		},
 	];
 }

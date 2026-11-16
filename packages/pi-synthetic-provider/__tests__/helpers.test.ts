@@ -9,6 +9,7 @@ import {
 	parsePrice,
 	shouldDisplaySubscriptionQuota,
 } from "../extensions/index.js";
+import { DEEPSEEK_V4_1_FLASH_MODEL_ID, getSyntheticModelOverrides, KIMI_K3_MODEL_ID } from "../extensions/models.js";
 
 describe("pi-synthetic-provider helpers", () => {
 	it("parses prices", () => {
@@ -30,12 +31,10 @@ describe("pi-synthetic-provider helpers", () => {
 			"hf:openai/gpt-oss-120b",
 			"hf:zai-org/GLM-5.3",
 			"hf:zai-org/GLM-5.3-Flash",
-			"hf:deepseek-ai/DeepSeek-V4.1-Flash",
 			"hf:deepseek-ai/DeepSeek-V4.1-Flash-1017",
-			"hf:moonshotai/Kimi-K3",
+			"hf:moonshotai/Kimi-K3.1-Pro",
 			"hf:Qwen/Qwen3.8-27B",
 			"hf:zai-org/GLM-4.7-Flash",
-			"hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4",
 		]);
 
 		for (const staleId of [
@@ -43,6 +42,9 @@ describe("pi-synthetic-provider helpers", () => {
 			"hf:zai-org/GLM-5.2",
 			"hf:moonshotai/Kimi-K2.6",
 			"hf:moonshotai/Kimi-K2.7-Code",
+			"hf:moonshotai/Kimi-K3",
+			"hf:deepseek-ai/DeepSeek-V4.1-Flash",
+			"hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4",
 			"hf:zai-org/GLM-4.7",
 			"hf:Qwen/Qwen3.5-397B-A17B",
 			"hf:Qwen/Qwen3.6-27B",
@@ -60,7 +62,7 @@ describe("pi-synthetic-provider helpers", () => {
 			input: ["text"],
 			cost: { input: 1.4, output: 4.4, cacheRead: 0.26 },
 		});
-		expect(models.find((model) => model.id === "hf:deepseek-ai/DeepSeek-V4.1-Flash")).toMatchObject({
+		expect(models.find((model) => model.id === "hf:deepseek-ai/DeepSeek-V4.1-Flash-1017")).toMatchObject({
 			contextWindow: 524288,
 			input: ["text", "image"],
 			cost: { input: 0.6, output: 1.2, cacheRead: 0.03 },
@@ -70,15 +72,15 @@ describe("pi-synthetic-provider helpers", () => {
 			input: ["text", "image"],
 			cost: { input: 0.15, output: 0.5, cacheRead: 0.04 },
 		});
-		expect(models.find((model) => model.id === "hf:moonshotai/Kimi-K3")).toMatchObject({
+		expect(models.find((model) => model.id === "hf:moonshotai/Kimi-K3.1-Pro")).toMatchObject({
 			contextWindow: 524288,
 			input: ["text", "image"],
-			cost: { input: 3, output: 15, cacheRead: 0.45 },
+			cost: { input: 2, output: 10, cacheRead: 0.2 },
 		});
-		// syn:large:vision was re-pointed from Kimi K2.7-Code to Kimi K3.
+		// syn:large:vision was re-pointed from Kimi K3 to Kimi K3.1 Pro.
 		expect(models.find((model) => model.id === "syn:large:vision")).toMatchObject({
 			contextWindow: 524288,
-			cost: { input: 3, output: 15, cacheRead: 0.45 },
+			cost: { input: 2, output: 10, cacheRead: 0.2 },
 		});
 		// syn:large:text was re-pointed from DeepSeek V4.1-Flash to its 10/17 snapshot.
 		expect(models.find((model) => model.id === "syn:large:text")).toMatchObject({
@@ -99,26 +101,41 @@ describe("pi-synthetic-provider helpers", () => {
 		});
 	});
 
+	it("keeps deprecated model id exports loadable without catalog entries", () => {
+		// Synthetic delisted these ids but still serves them, so the constants stay
+		// importable while the fallback catalog and effort overrides drop them.
+		const deprecated = [
+			[KIMI_K3_MODEL_ID, "hf:moonshotai/Kimi-K3"],
+			[DEEPSEEK_V4_1_FLASH_MODEL_ID, "hf:deepseek-ai/DeepSeek-V4.1-Flash"],
+		] as const;
+		const fallbackIds = getFallbackModels().map((model) => model.id);
+
+		for (const [constant, id] of deprecated) {
+			expect(constant).toBe(id);
+			expect(fallbackIds).not.toContain(id);
+			expect(getSyntheticModelOverrides(id)).toMatchObject({ compat: { supportsReasoningEffort: false } });
+			expect(getSyntheticModelOverrides(id).thinkingLevelMap).toBeUndefined();
+		}
+	});
+
 	it("matches the live catalog price for every fallback model", () => {
 		// Exact expected values, not merely cacheRead < input: the bug being guarded
 		// against set cacheRead equal to input, and a too-low wrong value would still
-		// satisfy an inequality. Sourced from input_cache_reads in the 2026-10-25
+		// satisfy an inequality. Sourced from input_cache_reads in the 2026-11-16
 		// catalog pull.
 		const expected: Record<string, { input: number; output: number; cacheRead: number }> = {
 			"syn:large:text": { input: 0.6, output: 1.2, cacheRead: 0.03 },
 			"syn:small:text": { input: 0.1, output: 0.5, cacheRead: 0.02 },
-			"syn:large:vision": { input: 3, output: 15, cacheRead: 0.45 },
+			"syn:large:vision": { input: 2, output: 10, cacheRead: 0.2 },
 			"syn:small:vision": { input: 0.6, output: 1.2, cacheRead: 0.03 },
 			"infinite:small:vision": { input: 0, output: 0, cacheRead: 0 },
 			"hf:openai/gpt-oss-120b": { input: 0.1, output: 0.1, cacheRead: 0.02 },
 			"hf:zai-org/GLM-5.3": { input: 1.4, output: 4.4, cacheRead: 0.26 },
 			"hf:zai-org/GLM-5.3-Flash": { input: 0.15, output: 0.5, cacheRead: 0.04 },
-			"hf:deepseek-ai/DeepSeek-V4.1-Flash": { input: 0.6, output: 1.2, cacheRead: 0.03 },
 			"hf:deepseek-ai/DeepSeek-V4.1-Flash-1017": { input: 0.6, output: 1.2, cacheRead: 0.03 },
-			"hf:moonshotai/Kimi-K3": { input: 3, output: 15, cacheRead: 0.45 },
+			"hf:moonshotai/Kimi-K3.1-Pro": { input: 2, output: 10, cacheRead: 0.2 },
 			"hf:Qwen/Qwen3.8-27B": { input: 0.45, output: 2.2, cacheRead: 0.09 },
 			"hf:zai-org/GLM-4.7-Flash": { input: 0.1, output: 0.5, cacheRead: 0.02 },
-			"hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4": { input: 0.3, output: 1, cacheRead: 0.06 },
 		};
 
 		const models = getFallbackModels();
@@ -161,21 +178,16 @@ describe("pi-synthetic-provider helpers", () => {
 			["hf:zai-org/GLM-5.3", lowHighMax],
 			["hf:zai-org/GLM-5.3-Flash", lowHighMax],
 			[
-				"hf:deepseek-ai/DeepSeek-V4.1-Flash",
-				{ off: "none", minimal: null, low: "low", medium: null, high: "high", xhigh: "xhigh", max: "max" },
-			],
-			[
 				"hf:deepseek-ai/DeepSeek-V4.1-Flash-1017",
 				{ off: "none", minimal: null, low: "low", medium: null, high: "high", xhigh: "xhigh", max: "max" },
 			],
 			["hf:zai-org/GLM-4.7-Flash", noneLowMediumHigh],
 			["hf:openai/gpt-oss-120b", noneLowMediumHigh],
-			["hf:moonshotai/Kimi-K3", lowHighMax],
+			["hf:moonshotai/Kimi-K3.1-Pro", lowHighMax],
 			[
 				"hf:Qwen/Qwen3.8-27B",
 				{ off: null, minimal: null, low: "low", medium: "medium", high: null, xhigh: "xhigh", max: null },
 			],
-			["hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4", noneLowMediumHigh],
 		] as const;
 
 		for (const [id, thinkingLevelMap] of reasoningModels) {

@@ -5,8 +5,8 @@ import syntheticProvider, { getFallbackModels, type SyntheticModelConfig } from 
 
 const GLM_5_3_MODEL_ID = "hf:zai-org/GLM-5.3";
 const GLM_5_3_FLASH_MODEL_ID = "hf:zai-org/GLM-5.3-Flash";
-const DEEPSEEK_V4_1_FLASH_MODEL_ID = "hf:deepseek-ai/DeepSeek-V4.1-Flash";
-const KIMI_K3_MODEL_ID = "hf:moonshotai/Kimi-K3";
+const DEEPSEEK_V4_1_FLASH_1017_MODEL_ID = "hf:deepseek-ai/DeepSeek-V4.1-Flash-1017";
+const KIMI_K3_1_PRO_MODEL_ID = "hf:moonshotai/Kimi-K3.1-Pro";
 const NONE_LOW_MEDIUM_HIGH_MAP = {
 	off: "none",
 	minimal: null,
@@ -28,7 +28,7 @@ const LOW_HIGH_MAX_MAP = {
 const REASONING_MODEL_MAPS = {
 	[GLM_5_3_MODEL_ID]: LOW_HIGH_MAX_MAP,
 	[GLM_5_3_FLASH_MODEL_ID]: LOW_HIGH_MAX_MAP,
-	[DEEPSEEK_V4_1_FLASH_MODEL_ID]: {
+	[DEEPSEEK_V4_1_FLASH_1017_MODEL_ID]: {
 		off: "none",
 		minimal: null,
 		low: "low",
@@ -39,7 +39,7 @@ const REASONING_MODEL_MAPS = {
 	},
 	"hf:zai-org/GLM-4.7-Flash": NONE_LOW_MEDIUM_HIGH_MAP,
 	"hf:openai/gpt-oss-120b": NONE_LOW_MEDIUM_HIGH_MAP,
-	[KIMI_K3_MODEL_ID]: LOW_HIGH_MAX_MAP,
+	[KIMI_K3_1_PRO_MODEL_ID]: LOW_HIGH_MAX_MAP,
 	"hf:Qwen/Qwen3.8-27B": {
 		off: null,
 		minimal: null,
@@ -49,17 +49,15 @@ const REASONING_MODEL_MAPS = {
 		xhigh: "xhigh",
 		max: null,
 	},
-	"hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4": NONE_LOW_MEDIUM_HIGH_MAP,
 } as const;
 const REASONING_MODEL_EFFORTS = {
 	[GLM_5_3_MODEL_ID]: ["low", "high", "max"],
 	[GLM_5_3_FLASH_MODEL_ID]: ["low", "high", "max"],
-	[DEEPSEEK_V4_1_FLASH_MODEL_ID]: ["none", "low", "high", "xhigh", "max"],
+	[DEEPSEEK_V4_1_FLASH_1017_MODEL_ID]: ["none", "low", "high", "xhigh", "max"],
 	"hf:zai-org/GLM-4.7-Flash": ["none", "low", "medium", "high"],
 	"hf:openai/gpt-oss-120b": ["none", "low", "medium", "high"],
-	[KIMI_K3_MODEL_ID]: ["low", "high", "max"],
+	[KIMI_K3_1_PRO_MODEL_ID]: ["low", "high", "max"],
 	"hf:Qwen/Qwen3.8-27B": ["low", "medium", "xhigh"],
-	"hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4": ["none", "low", "medium", "high"],
 } as const;
 const REASONING_MODEL_IDS = Object.keys(REASONING_MODEL_MAPS);
 
@@ -170,7 +168,7 @@ describe("pi-synthetic-provider", () => {
 		}
 	});
 
-	it("lets live effort metadata override the hardcoded Kimi K3 fallback", async () => {
+	it("lets live effort metadata override the hardcoded Kimi K3.1 Pro fallback", async () => {
 		vi.stubGlobal(
 			"fetch",
 			vi.fn().mockResolvedValue({
@@ -178,15 +176,15 @@ describe("pi-synthetic-provider", () => {
 				json: async () => ({
 					data: [
 						{
-							id: KIMI_K3_MODEL_ID,
-							name: "moonshotai/Kimi-K3",
+							id: KIMI_K3_1_PRO_MODEL_ID,
+							name: "moonshotai/Kimi-K3.1-Pro",
 							always_on: true,
 							supported_features: ["tools", "reasoning"],
 							reasoning_parameters: { efforts: ["low", "high"] },
 							input_modalities: ["text", "image"],
 							context_length: 524288,
 							max_output_length: 65536,
-							pricing: { prompt: "3", completion: "15" },
+							pricing: { prompt: "2", completion: "10" },
 						},
 					],
 				}),
@@ -250,9 +248,9 @@ describe("pi-synthetic-provider", () => {
 
 	it("resolves syn:* permalink overrides through the catalog target when effort metadata is absent", async () => {
 		const permalinks = [
-			["syn:large:text", "deepseek-ai/DeepSeek-V4.1-Flash"],
+			["syn:large:text", "deepseek-ai/DeepSeek-V4.1-Flash-1017"],
 			["syn:small:text", "zai-org/GLM-4.7-Flash"],
-			["syn:large:vision", "moonshotai/Kimi-K3"],
+			["syn:large:vision", "moonshotai/Kimi-K3.1-Pro"],
 			["syn:small:vision", "Qwen/Qwen3.8-27B"],
 		] as const;
 		vi.stubGlobal(
@@ -335,7 +333,7 @@ describe("pi-synthetic-provider", () => {
 						{
 							id: "hf:example/other-model",
 							name: "example/other-model",
-							hugging_face_id: "moonshotai/Kimi-K3",
+							hugging_face_id: "moonshotai/Kimi-K3.1-Pro",
 							always_on: true,
 							supported_features: ["tools", "reasoning"],
 							input_modalities: ["text"],
