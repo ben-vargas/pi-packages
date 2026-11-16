@@ -9,12 +9,7 @@ import {
 	parsePrice,
 	shouldDisplaySubscriptionQuota,
 } from "../extensions/index.js";
-import {
-	DEEPSEEK_V4_1_FLASH_MODEL_ID,
-	getSyntheticModelOverrides,
-	KIMI_K3_MODEL_ID,
-	NEMOTRON_3_SUPER_MODEL_ID,
-} from "../extensions/models.js";
+import { DEEPSEEK_V4_1_FLASH_MODEL_ID, getSyntheticModelOverrides, KIMI_K3_MODEL_ID } from "../extensions/models.js";
 
 describe("pi-synthetic-provider helpers", () => {
 	it("parses prices", () => {
@@ -107,13 +102,11 @@ describe("pi-synthetic-provider helpers", () => {
 	});
 
 	it("keeps deprecated model id exports loadable without catalog entries", () => {
-		// Synthetic delisted or retired these ids. The constants stay importable so
-		// existing consumers keep loading, while the fallback catalog and effort
-		// overrides drop them.
+		// Synthetic delisted these ids but still serves them, so the constants stay
+		// importable while the fallback catalog and effort overrides drop them.
 		const deprecated = [
 			[KIMI_K3_MODEL_ID, "hf:moonshotai/Kimi-K3"],
 			[DEEPSEEK_V4_1_FLASH_MODEL_ID, "hf:deepseek-ai/DeepSeek-V4.1-Flash"],
-			[NEMOTRON_3_SUPER_MODEL_ID, "hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4"],
 		] as const;
 		const fallbackIds = getFallbackModels().map((model) => model.id);
 
