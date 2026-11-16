@@ -15,9 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Refreshed the fallback catalog against the live `always_on` catalog as of 2026-11-16. `syn:large:vision` was re-pointed from Kimi K3 to Kimi K3.1 Pro, so its fallback entry is now $2.00/$10.00/$0.20 (was $3.00/$15.00/$0.45).
 
+### Deprecated
+- Deprecated `KIMI_K3_MODEL_ID` (`hf:moonshotai/Kimi-K3`). Synthetic delisted Kimi K3 and now serves requests for that id with Kimi K3.1 Pro. The constant still exports; use `KIMI_K3_1_PRO_MODEL_ID`.
+- Deprecated `DEEPSEEK_V4_1_FLASH_MODEL_ID` (`hf:deepseek-ai/DeepSeek-V4.1-Flash`). Synthetic delisted the unpinned id and now serves it with the 10/17 snapshot. The constant still exports; use `DEEPSEEK_V4_1_FLASH_1017_MODEL_ID`.
+
 ### Removed
-- Removed the `KIMI_K3_MODEL_ID` export and the `hf:moonshotai/Kimi-K3` fallback entry and reasoning override. Synthetic delisted Kimi K3 and now serves requests for that id with Kimi K3.1 Pro. Use `KIMI_K3_1_PRO_MODEL_ID`.
-- Removed the `DEEPSEEK_V4_1_FLASH_MODEL_ID` export and the `hf:deepseek-ai/DeepSeek-V4.1-Flash` fallback entry and reasoning override. Synthetic delisted the unpinned id and now serves it with the 10/17 snapshot. Use `DEEPSEEK_V4_1_FLASH_1017_MODEL_ID`.
+- Removed the `hf:moonshotai/Kimi-K3` and `hf:deepseek-ai/DeepSeek-V4.1-Flash` fallback entries and reasoning overrides, since neither id is in the catalog any more.
 - Removed the `NEMOTRON_3_SUPER_MODEL_ID` export and the `hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4` fallback entry and reasoning override. Synthetic retired the model, so the id fails every request.
 
 ## [1.2.7] - 2026-10-25

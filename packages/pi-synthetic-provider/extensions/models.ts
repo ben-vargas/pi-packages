@@ -17,6 +17,18 @@ export const QWEN_3_8_27B_MODEL_ID = "hf:Qwen/Qwen3.8-27B";
 export const INFINITE_SMALL_VISION_MODEL_ID = "infinite:small:vision";
 
 /**
+ * @deprecated Synthetic delisted Kimi K3 and serves this id with Kimi K3.1 Pro.
+ * Use {@link KIMI_K3_1_PRO_MODEL_ID}. Kept so existing imports keep loading.
+ */
+export const KIMI_K3_MODEL_ID = "hf:moonshotai/Kimi-K3";
+/**
+ * @deprecated Synthetic delisted the unpinned id and serves it with the 10/17
+ * snapshot. Use {@link DEEPSEEK_V4_1_FLASH_1017_MODEL_ID}. Kept so existing
+ * imports keep loading.
+ */
+export const DEEPSEEK_V4_1_FLASH_MODEL_ID = "hf:deepseek-ai/DeepSeek-V4.1-Flash";
+
+/**
  * Chat entries of pi's provider model config. Pi 0.99 widened
  * `ProviderModelConfig` into a union that also covers image and classifier
  * models; Synthetic only serves chat models, and those entries omit `type`.
@@ -292,7 +304,8 @@ export async function fetchSyntheticModels(
  * zero-priced route that currently also serves DeepSeek V4.1-Flash 10/17.
  *
  * Pricing format: $/million tokens. `cacheRead` tracks the catalog's
- * `input_cache_reads` rate, which is well below the input rate on every model.
+ * `input_cache_reads` rate, which is well below the input rate on every model
+ * with a nonzero input price.
  *
  * The `syn:*` and `infinite:*` entries deliberately carry no `thinkingLevelMap`. Offline there is
  * no catalog row naming the permalink's current target, so any effort map here
