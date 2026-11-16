@@ -27,6 +27,11 @@ export const KIMI_K3_MODEL_ID = "hf:moonshotai/Kimi-K3";
  * imports keep loading.
  */
 export const DEEPSEEK_V4_1_FLASH_MODEL_ID = "hf:deepseek-ai/DeepSeek-V4.1-Flash";
+/**
+ * @deprecated Synthetic retired Nemotron 3 Super; requests for this id fail.
+ * Kept so existing imports keep loading.
+ */
+export const NEMOTRON_3_SUPER_MODEL_ID = "hf:nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4";
 
 /**
  * Chat entries of pi's provider model config. Pi 0.99 widened
