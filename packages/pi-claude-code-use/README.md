@@ -1,5 +1,8 @@
 # @benvargas/pi-claude-code-use
 
+> [!WARNING]
+> **Unmaintained.** This package is retired and will not receive fixes or updates. I no longer have a way to test it or confirm that it works: I'm unwilling to use my account in third-party harnesses, especially against the terms of Anthropic's Cyber Verification Program (CVP). Version 3.0.1 stays on npm as-is, with no assurance that it still functions. Anthropic's [guidance](https://support.claude.com/en/articles/13189465-log-in-to-your-claude-account) prohibits third-party tools that route traffic against subscription limits, so use it at your own risk.
+
 `pi-claude-code-use` keeps Pi's built-in `anthropic` provider intact and applies the smallest payload changes needed for Anthropic OAuth subscription use in Pi.
 
 It does not register a new provider or replace Pi's Anthropic request transport. Pi core remains in charge of OAuth transport, headers, model definitions, and streaming.
