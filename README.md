@@ -17,12 +17,14 @@ Pi packages can include extensions, skills, prompt templates, and themes. See th
 | [@benvargas/pi-cut-stack](./packages/pi-cut-stack/) | Extension | Cut-stack editor shortcuts |
 | [@benvargas/pi-openai-fast](./packages/pi-openai-fast/) | Extension | `/fast` toggle for OpenAI priority service tier on supported GPT-5.4 models |
 | [@benvargas/pi-openai-verbosity](./packages/pi-openai-verbosity/) | Extension | Config-backed OpenAI Codex text verbosity rewrites |
-| [@benvargas/pi-claude-code-use](./packages/pi-claude-code-use/) | Extension | Anthropic/Claude OAuth compatibility patching |
+| [@benvargas/pi-claude-code-use](./packages/pi-claude-code-use/) | Extension | **Unmaintained**, no longer tested. Anthropic/Claude OAuth compatibility patching |
 | [@benvargas/pi-model-sort](./packages/pi-model-sort/) | Extension | Last-usage sorting for the `/model` picker and scoped cycling; fresh starts on the most recently used model |
 
 Each package has its own README with setup instructions, usage, and configuration details.
 
 `pi-exa-mcp` and `pi-firecrawl` are deprecated: Pi 0.99.0 added built-in MCP support, which connects to Exa's and Firecrawl's MCP servers directly. Installing this repository from git (`pi install git:github.com/ben-vargas/pi-packages`) no longer loads them, so after `pi update` their tools are gone from existing git installs. Each package's README explains how to move to Pi's MCP support. Both remain installable from npm.
+
+`pi-claude-code-use` is unmaintained: I can no longer test it, because I'm unwilling to use my account in third-party harnesses, especially against the terms of Anthropic's Cyber Verification Program (CVP). Installing this repository from git no longer loads it, so after `pi update` it is gone from existing git installs. It remains installable from npm at 3.0.1, with no assurance that it still works.
 
 Security notes and dependency audit status are tracked in `SECURITY.md`.
 
@@ -61,7 +63,6 @@ pi install npm:@benvargas/pi-ancestor-discovery
 pi install npm:@benvargas/pi-cut-stack
 pi install npm:@benvargas/pi-openai-fast
 pi install npm:@benvargas/pi-openai-verbosity
-pi install npm:@benvargas/pi-claude-code-use
 pi install npm:@benvargas/pi-model-sort
 ```
 

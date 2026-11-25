@@ -7,6 +7,9 @@ and this package adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Deprecated
+- This package is retired and unmaintained. It can no longer be tested, so it will not receive fixes or updates. 3.0.1 stays on npm as-is. Installing the `pi-packages` repository from git no longer loads it.
+
 ## [3.0.1] - 2026-10-25
 
 ### Fixed
